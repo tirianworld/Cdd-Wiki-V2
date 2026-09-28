@@ -817,13 +817,19 @@ export function ArticleView() {
   }, []);
 
   useEffect(() => {
+    if (!slug) {
+      setArticle(null);
+      setLoading(false);
+      return;
+    }
+
     // Instant cache check first
-    const cachedArt = slug ? getCachedArticleBySlugOrId(slug) : null;
+    const cachedArt = getCachedArticleBySlugOrId(slug);
     const cachedList = getCachedArticles();
     if (cachedList.length > 0) {
       setAllArticles(cachedList);
     }
-    if (cachedArt) {
+    if (cachedArt && cachedArt.title) {
       setArticle(cachedArt);
       setLoading(false);
       if (Array.isArray(cachedArt.timeline_markers) && cachedArt.timeline_markers.length > 0) {
@@ -840,21 +846,45 @@ export function ArticleView() {
       syncFetch(`/api/articles/${slug}`).then((res) => {
         if (!res.ok) throw new Error("Article not found");
         return res.json();
-      }),
+      }).catch(() => null),
       fetch("/api/dnd5e-monsters").then((res) => res.json()).catch(() => []),
       fetch("/api/spellbook/spells").then((res) => res.json()).catch(() => ({ spells: [] }))
     ])
       .then(([articlesList, activeArticle, monstersList, spellsData]) => {
         const safeArticles = Array.isArray(articlesList) ? articlesList : [];
         setAllArticles(safeArticles);
-        if (activeArticle) {
-          setArticle(activeArticle);
-          // Default select first timeline milestone if available, or restore from localStorage if it exists for this article
-          if (Array.isArray(activeArticle.timeline_markers) && activeArticle.timeline_markers.length > 0) {
-            const savedTimelineId = localStorage.getItem(`articleview_selected_timeline_id_${activeArticle.id}`);
-            const foundTimeline = activeArticle.timeline_markers.find((m: any) => m && m.id === savedTimelineId);
-            setSelectedTimelineId(foundTimeline ? foundTimeline.id : activeArticle.timeline_markers[0]?.id || null);
+
+        // Ensure activeArticle is a valid single article with id and title
+        const isValid = Boolean(activeArticle && !Array.isArray(activeArticle) && activeArticle.id && activeArticle.title);
+        let resolvedArticle: WikiArticle | null = isValid ? activeArticle : null;
+
+        // Fallback: look up in full safeArticles if activeArticle is missing or lacking content
+        if ((!resolvedArticle || !resolvedArticle.content) && slug) {
+          const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          const targetNorm = norm(slug);
+          const found = safeArticles.find((a: any) => 
+            Boolean(a && a.id && a.title && (
+              a.slug === slug || 
+              a.id === slug || 
+              norm(a.slug || "") === targetNorm || 
+              norm(a.id || "") === targetNorm ||
+              norm(a.title || "") === targetNorm
+            ))
+          );
+          if (found) {
+            resolvedArticle = found;
           }
+        }
+
+        if (resolvedArticle && resolvedArticle.title) {
+          setArticle(resolvedArticle);
+          if (Array.isArray(resolvedArticle.timeline_markers) && resolvedArticle.timeline_markers.length > 0) {
+            const savedTimelineId = localStorage.getItem(`articleview_selected_timeline_id_${resolvedArticle.id}`);
+            const foundTimeline = resolvedArticle.timeline_markers.find((m: any) => m && m.id === savedTimelineId);
+            setSelectedTimelineId(foundTimeline ? foundTimeline.id : resolvedArticle.timeline_markers[0]?.id || null);
+          }
+        } else if (!cachedArt) {
+          setArticle(null);
         }
         
         const uniqueMonsters: any[] = [];
@@ -876,10 +906,7 @@ export function ArticleView() {
         setLoading(false);
       })
       .catch((err) => {
-        if (err?.message !== "Article not found") {
-          console.warn("Background loading article details:", err);
-        }
-        // Only clear article if we didn't already have one from cache
+        console.warn("Background loading article details:", err);
         if (!cachedArt) {
           setArticle(null);
         }
@@ -1048,12 +1075,13 @@ export function ArticleView() {
       }
       const subs = getSubmagiasForPillar(p.id);
       for (const s of subs) {
-        if (
-          titleNorm === norm(s.title) || 
-          slugNorm === norm(s.slug || "") || 
+        const hasMatch = 
+          (titleNorm.length > 0 && titleNorm === norm(s.title)) || 
+          (slugNorm.length > 0 && Boolean(s.slug) && slugNorm === norm(s.slug || "")) || 
           (titleNorm.length > 3 && norm(s.title).includes(titleNorm)) ||
-          (norm(s.title).length > 3 && titleNorm.includes(norm(s.title)))
-        ) {
+          (norm(s.title).length > 3 && titleNorm.includes(norm(s.title)));
+
+        if (hasMatch) {
           return {
             type: "magias" as const,
             subgraphType: "submagia" as const,

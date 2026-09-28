@@ -165,9 +165,11 @@ export function getCachedArticleBySlugOrId(slugOrId: string): WikiArticle | null
   const articles = getCachedArticles();
   const normalized = slugOrId.toLowerCase().trim();
   return articles.find(a => 
-    (a.id && a.id.toLowerCase() === normalized) || 
-    (a.slug && a.slug.toLowerCase() === normalized) ||
-    (a.title && a.title.toLowerCase() === normalized)
+    Boolean(a && a.id && a.title && (
+      (a.id && a.id.toLowerCase() === normalized) || 
+      (a.slug && a.slug.toLowerCase() === normalized) ||
+      (a.title && a.title.toLowerCase() === normalized)
+    ))
   ) || null;
 }
 
