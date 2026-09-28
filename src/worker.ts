@@ -2,6 +2,9 @@ export interface Env {
   ASSETS: {
     fetch: (request: Request | string) => Promise<Response>;
   };
+  GITHUB_TOKEN?: string;
+  GITHUB_REPO?: string;
+  GITHUB_BRANCH?: string;
   GROQ_API_KEY?: string;
   CEREBRAS_API_KEY?: string;
   MISTRAL_API_KEY?: string;
@@ -14,6 +17,9 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Headers": "*",
 };
 
+const DEFAULT_REPO = "theworldoftirian/dragopedia";
+const DEFAULT_BRANCH = "main";
+
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -22,6 +28,60 @@ function jsonResponse(data: any, status = 200): Response {
       ...CORS_HEADERS,
     },
   });
+}
+
+// Fetch live data from GitHub repository with fallback to bundled static assets
+async function fetchRepoData(
+  env: Env,
+  request: Request,
+  repoPath: string,
+  localAssetPath: string
+): Promise<Response> {
+  const repo = env.GITHUB_REPO || DEFAULT_REPO;
+  const branch = env.GITHUB_BRANCH || DEFAULT_BRANCH;
+  const token = env.GITHUB_TOKEN;
+
+  // 1. Try fetching live from GitHub repository
+  try {
+    const ghUrl = `https://raw.githubusercontent.com/${repo}/${branch}/${repoPath}`;
+    const headers: Record<string, string> = {
+      "User-Agent": "Dragopedia-Worker",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const ghRes = await fetch(ghUrl, { headers });
+    if (ghRes.ok) {
+      const text = await ghRes.text();
+      return new Response(text, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=30, stale-while-revalidate=120",
+          ...CORS_HEADERS,
+        },
+      });
+    }
+  } catch (err) {
+    console.warn(`[GitHub Fetch Failed for ${repoPath}]:`, err);
+  }
+
+  // 2. Fallback to bundled static assets in dist
+  const assetReq = new Request(new URL(localAssetPath, request.url), request);
+  const assetRes = await env.ASSETS.fetch(assetReq);
+  if (assetRes.ok) {
+    const text = await assetRes.text();
+    return new Response(text, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        ...CORS_HEADERS,
+      },
+    });
+  }
+
+  return jsonResponse([]);
 }
 
 // Multi-provider AI Caller: Groq -> Cerebras -> Mistral
@@ -155,7 +215,7 @@ export default {
       });
     }
 
-    // 1. Edge-native API Routes
+    // 1. Edge-native API Routes (Reads from GitHub repo when configured, falling back to local assets)
     if (url.pathname.startsWith("/api/")) {
       const cleanPath = url.pathname.replace(/\/$/, "");
 
@@ -170,12 +230,12 @@ export default {
             return jsonResponse({ error: "El mensaje es requerido." }, 400);
           }
 
-          // Fetch local articles for context
+          // Fetch articles for context (live from GitHub or local assets)
           let matchedArticlesContext = "";
           try {
-            const assetRes = await env.ASSETS.fetch(new Request(new URL("/data/articles.json", request.url)));
-            if (assetRes.ok) {
-              const articles: any[] = await assetRes.json();
+            const articlesRes = await fetchRepoData(env, request, "src/data/articles.json", "/data/articles.json");
+            if (articlesRes.ok) {
+              const articles: any[] = await articlesRes.json();
               const lowerMsg = userMessage.toLowerCase();
               const words = lowerMsg.split(/\s+/).filter((w) => w.length > 2);
 
@@ -314,19 +374,10 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
         return jsonResponse({ success: true, message: "Cambios consagrados en el manuscrito." });
       }
 
-      // 1.6 Articles endpoint
+      // 1.6 Articles endpoint (Live from GitHub with static fallback)
       if (cleanPath === "/api/articles") {
         if (request.method === "GET") {
-          const assetReq = new Request(new URL("/data/articles.json", request.url), request);
-          const assetRes = await env.ASSETS.fetch(assetReq);
-          if (assetRes.ok) {
-            const body = await assetRes.text();
-            return new Response(body, {
-              status: 200,
-              headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-            });
-          }
-          return jsonResponse([]);
+          return await fetchRepoData(env, request, "src/data/articles.json", "/data/articles.json");
         }
         return jsonResponse({ success: true, message: "Artículo procesado con éxito" });
       }
@@ -337,112 +388,43 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
           updates: [],
           deletedIds: [],
           timestamp: new Date().toISOString(),
-          message: "All articles in sync with edge",
+          message: "All articles in sync with edge and GitHub repository",
         });
       }
 
-      // 1.8 Campaign Events endpoint
-      if (cleanPath === "/api/campaign-events") {
-        if (request.method === "GET") {
-          const assetReq = new Request(new URL("/data/campaign_events.json", request.url), request);
-          const assetRes = await env.ASSETS.fetch(assetReq);
-          if (assetRes.ok) {
-            const body = await assetRes.text();
-            return new Response(body, {
-              status: 200,
-              headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-            });
-          }
-          return jsonResponse([]);
-        }
-        return jsonResponse({ success: true });
-      }
-
-      // 1.9 Site UI Config endpoint
-      if (cleanPath === "/api/site-ui-config") {
-        if (request.method === "GET") {
-          const assetReq = new Request(new URL("/data/site_ui_config.json", request.url), request);
-          const assetRes = await env.ASSETS.fetch(assetReq);
-          if (assetRes.ok) {
-            const body = await assetRes.text();
-            return new Response(body, {
-              status: 200,
-              headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-            });
-          }
-          return jsonResponse({});
-        }
-        return jsonResponse({ success: true });
-      }
-
-      // 1.10 Filter Categories endpoint
-      if (cleanPath === "/api/filter-categories") {
-        const assetReq = new Request(new URL("/data/filter_categories.json", request.url), request);
-        const assetRes = await env.ASSETS.fetch(assetReq);
-        if (assetRes.ok) {
-          const body = await assetRes.text();
-          return new Response(body, {
-            status: 200,
-            headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-          });
-        }
-        return jsonResponse({ campaña: [], continente: [], plano: [], criatura: [] });
-      }
-
-      // 1.11 Categories endpoint
+      // 1.8 Categories endpoint (Live from GitHub)
       if (cleanPath === "/api/categories") {
-        const assetReq = new Request(new URL("/data/categories.json", request.url), request);
-        const assetRes = await env.ASSETS.fetch(assetReq);
-        if (assetRes.ok) {
-          const body = await assetRes.text();
-          return new Response(body, {
-            status: 200,
-            headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-          });
-        }
-        return jsonResponse([]);
+        return await fetchRepoData(env, request, "src/data/categories.json", "/data/categories.json");
       }
 
-      // 1.12 Maps endpoint
+      // 1.9 Campaign Events endpoint (Live from GitHub)
+      if (cleanPath === "/api/campaign-events") {
+        return await fetchRepoData(env, request, "src/data/campaign_events.json", "/data/campaign_events.json");
+      }
+
+      // 1.10 Site UI Config endpoint (Live from GitHub)
+      if (cleanPath === "/api/site-ui-config") {
+        return await fetchRepoData(env, request, "src/data/site_ui_config.json", "/data/site_ui_config.json");
+      }
+
+      // 1.11 Filter Categories endpoint (Live from GitHub)
+      if (cleanPath === "/api/filter-categories") {
+        return await fetchRepoData(env, request, "src/data/filter_categories.json", "/data/filter_categories.json");
+      }
+
+      // 1.12 Maps endpoint (Live from GitHub)
       if (cleanPath === "/api/cartocraft/maps" || cleanPath === "/api/maps") {
-        const assetReq = new Request(new URL("/data/maps.json", request.url), request);
-        const assetRes = await env.ASSETS.fetch(assetReq);
-        if (assetRes.ok) {
-          const body = await assetRes.text();
-          return new Response(body, {
-            status: 200,
-            headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-          });
-        }
-        return jsonResponse({ maps: [] });
+        return await fetchRepoData(env, request, "src/data/maps.json", "/data/maps.json");
       }
 
-      // 1.13 Genealogy Tree endpoint
+      // 1.13 Genealogy Tree endpoint (Live from GitHub)
       if (cleanPath === "/api/genealogy") {
-        const assetReq = new Request(new URL("/data/genealogy_tree.json", request.url), request);
-        const assetRes = await env.ASSETS.fetch(assetReq);
-        if (assetRes.ok) {
-          const body = await assetRes.text();
-          return new Response(body, {
-            status: 200,
-            headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-          });
-        }
-        return jsonResponse({ nodes: [], links: [] });
+        return await fetchRepoData(env, request, "src/data/genealogy_tree.json", "/data/genealogy_tree.json");
       }
 
-      // 1.14 Spells / Spellbook endpoint
+      // 1.14 Spells / Spellbook endpoint (Live from GitHub)
       if (cleanPath === "/api/spells" || cleanPath === "/api/spellbook") {
-        const assetReq = new Request(new URL("/data/spells.json", request.url), request);
-        const assetRes = await env.ASSETS.fetch(assetReq);
-        if (assetRes.ok) {
-          const body = await assetRes.text();
-          return new Response(body, {
-            status: 200,
-            headers: { "Content-Type": "application/json; charset=utf-8", ...CORS_HEADERS },
-          });
-        }
-        return jsonResponse([]);
+        return await fetchRepoData(env, request, "src/data/spells.json", "/data/spells.json");
       }
 
       // 1.15 Discord Bot status endpoint
@@ -463,7 +445,35 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
       });
     }
 
-    // 2. Serve static assets & SPA routes via ASSETS binding
-    return env.ASSETS.fetch(request);
+    // 2. Serve static assets & images
+    const assetResponse = await env.ASSETS.fetch(request);
+    
+    // If an image is requested and returns 404 from static dist, fetch it live from GitHub
+    if (assetResponse.status === 404 && url.pathname.startsWith("/images/")) {
+      const repo = env.GITHUB_REPO || DEFAULT_REPO;
+      const branch = env.GITHUB_BRANCH || DEFAULT_BRANCH;
+      const token = env.GITHUB_TOKEN;
+      try {
+        const ghImgUrl = `https://raw.githubusercontent.com/${repo}/${branch}/public${url.pathname}`;
+        const headers: Record<string, string> = { "User-Agent": "Dragopedia-Worker" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        
+        const ghImgRes = await fetch(ghImgUrl, { headers });
+        if (ghImgRes.ok) {
+          return new Response(ghImgRes.body, {
+            status: 200,
+            headers: {
+              "Content-Type": ghImgRes.headers.get("content-type") || "image/png",
+              "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+              ...CORS_HEADERS,
+            },
+          });
+        }
+      } catch (err) {
+        console.warn(`[GitHub image fallback failed for ${url.pathname}]:`, err);
+      }
+    }
+
+    return assetResponse;
   },
 };

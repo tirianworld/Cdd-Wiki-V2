@@ -8,5 +8,9 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "GITHUB_REPO": "theworldoftirian/dragopedia",
+    "GITHUB_BRANCH": "main"
   }
 }
