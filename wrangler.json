@@ -10,7 +10,7 @@
     "not_found_handling": "single-page-application"
   },
   "vars": {
-    "GITHUB_REPO": "theworldoftirian/dragopedia",
+    "GITHUB_REPO": "tirianworld/Cdd-Wiki-V2",
     "GITHUB_BRANCH": "main"
   }
 }

@@ -228,7 +228,7 @@ const firebaseInstances: FirebaseInstance[] = [];
 // GitHub database integration
 // ---------------------------------------------------------------------------
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO || "theworldoftirian/dragopedia"; // Owner / Repo
+const GITHUB_REPO = process.env.GITHUB_REPO || "tirianworld/Cdd-Wiki-V2"; // Owner / Repo
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 
 const GITHUB_ARTICLES_PATH = "src/data/articles.json";
@@ -245,27 +245,25 @@ const GITHUB_MAPS_PATH = "src/data/maps.json";
 const LOCAL_MAPS_PATH = path.join(process.cwd(), "src", "data", "maps.json");
 
 async function readFromGitHub<T>(repoPath: string): Promise<T | null> {
-  if (!GITHUB_TOKEN) {
-    console.warn(`[GitHub Read] No GITHUB_TOKEN configured. Cannot read ${repoPath} from GitHub.`);
-    return null;
-  }
-  const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${repoPath}?ref=${GITHUB_BRANCH}`;
+  const url = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${repoPath}`;
   try {
+    const headers: Record<string, string> = {
+      "User-Agent": "Dragopedia-Server"
+    };
+    if (GITHUB_TOKEN) {
+      headers["Authorization"] = `Bearer ${GITHUB_TOKEN}`;
+    }
     const res = await fetch(url, {
       method: "GET",
       signal: AbortSignal.timeout(3500),
-      headers: {
-        "Authorization": `Bearer ${GITHUB_TOKEN}`,
-        "Accept": "application/vnd.github.v3.raw",
-        "User-Agent": "Dragopedia-Server"
-      }
+      headers
     });
 
     if (res.status === 200) {
       const text = await res.text();
       return JSON.parse(text) as T;
     } else {
-      console.warn(`[GitHub Read] Received status ${res.status} when reading ${repoPath}:`, await res.text());
+      console.warn(`[GitHub Read] Received status ${res.status} when reading ${repoPath} from ${url}`);
       return null;
     }
   } catch (err) {

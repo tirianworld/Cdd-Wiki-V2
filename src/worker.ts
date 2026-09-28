@@ -17,7 +17,7 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Headers": "*",
 };
 
-const DEFAULT_REPO = "theworldoftirian/dragopedia";
+const DEFAULT_REPO = "tirianworld/Cdd-Wiki-V2";
 const DEFAULT_BRANCH = "main";
 
 function jsonResponse(data: any, status = 200): Response {
