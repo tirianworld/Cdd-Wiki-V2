@@ -30,7 +30,7 @@ function jsonResponse(data: any, status = 200): Response {
   });
 }
 
-// Fetch live data from GitHub repository with fallback to bundled static assets
+// Fetch live data from GitHub repository with fast fallback to bundled static assets
 async function fetchRepoData(
   env: Env,
   request: Request,
@@ -41,7 +41,7 @@ async function fetchRepoData(
   const branch = env.GITHUB_BRANCH || DEFAULT_BRANCH;
   const token = env.GITHUB_TOKEN;
 
-  // 1. Try fetching live from GitHub repository
+  // 1. Try fetching live from GitHub repository (fast timeout so it never blocks)
   try {
     const ghUrl = `https://raw.githubusercontent.com/${repo}/${branch}/${repoPath}`;
     const headers: Record<string, string> = {
@@ -51,7 +51,15 @@ async function fetchRepoData(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const ghRes = await fetch(ghUrl, { headers });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    const ghRes = await fetch(ghUrl, {
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
     if (ghRes.ok) {
       const text = await ghRes.text();
       return new Response(text, {
@@ -64,21 +72,32 @@ async function fetchRepoData(
       });
     }
   } catch (err) {
-    console.warn(`[GitHub Fetch Failed for ${repoPath}]:`, err);
+    // Graceful fallback to static assets if GitHub is slow, down, or rate-limited
   }
 
   // 2. Fallback to bundled static assets in dist
-  const assetReq = new Request(new URL(localAssetPath, request.url), request);
-  const assetRes = await env.ASSETS.fetch(assetReq);
-  if (assetRes.ok) {
-    const text = await assetRes.text();
-    return new Response(text, {
-      status: 200,
+  try {
+    const assetUrl = new URL(localAssetPath, request.url);
+    const assetReq = new Request(assetUrl.toString(), {
+      method: "GET",
       headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        ...CORS_HEADERS,
+        Accept: "application/json, text/plain, */*",
       },
     });
+    const assetRes = await env.ASSETS.fetch(assetReq);
+    if (assetRes.ok) {
+      const text = await assetRes.text();
+      return new Response(text, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=60",
+          ...CORS_HEADERS,
+        },
+      });
+    }
+  } catch (assetErr) {
+    console.warn(`[Asset fallback error for ${localAssetPath}]:`, assetErr);
   }
 
   return jsonResponse([]);
