@@ -30,7 +30,7 @@ function jsonResponse(data: any, status = 200): Response {
   });
 }
 
-// Fetch live data from GitHub repository with fast fallback to bundled static assets
+// Fetch live data from GitHub repository with fast timeout and fallback to bundled static assets
 async function fetchRepoData(
   env: Env,
   request: Request,
@@ -41,7 +41,7 @@ async function fetchRepoData(
   const branch = env.GITHUB_BRANCH || DEFAULT_BRANCH;
   const token = env.GITHUB_TOKEN;
 
-  // 1. Try fetching live from GitHub repository (fast timeout so it never blocks)
+  // 1. Try fetching live from GitHub repository with 2.5s timeout
   try {
     const ghUrl = `https://raw.githubusercontent.com/${repo}/${branch}/${repoPath}`;
     const headers: Record<string, string> = {
@@ -52,13 +52,13 @@ async function fetchRepoData(
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timer = setTimeout(() => controller.abort(), 2500);
 
     const ghRes = await fetch(ghUrl, {
       headers,
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
+    clearTimeout(timer);
 
     if (ghRes.ok) {
       const text = await ghRes.text();
@@ -72,32 +72,25 @@ async function fetchRepoData(
       });
     }
   } catch (err) {
-    // Graceful fallback to static assets if GitHub is slow, down, or rate-limited
+    console.warn(`[GitHub Fetch Failed for ${repoPath}]:`, err);
   }
 
   // 2. Fallback to bundled static assets in dist
   try {
     const assetUrl = new URL(localAssetPath, request.url);
-    const assetReq = new Request(assetUrl.toString(), {
-      method: "GET",
-      headers: {
-        Accept: "application/json, text/plain, */*",
-      },
-    });
-    const assetRes = await env.ASSETS.fetch(assetReq);
+    const assetRes = await env.ASSETS.fetch(assetUrl.toString());
     if (assetRes.ok) {
       const text = await assetRes.text();
       return new Response(text, {
         status: 200,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "public, max-age=60",
           ...CORS_HEADERS,
         },
       });
     }
-  } catch (assetErr) {
-    console.warn(`[Asset fallback error for ${localAssetPath}]:`, assetErr);
+  } catch (err) {
+    console.warn(`[Asset Fetch Failed for ${localAssetPath}]:`, err);
   }
 
   return jsonResponse([]);
@@ -234,9 +227,40 @@ export default {
       });
     }
 
-    // 1. Edge-native API Routes (Reads from GitHub repo when configured, falling back to local assets)
+    // 1. Edge-native API Routes
     if (url.pathname.startsWith("/api/")) {
       const cleanPath = url.pathname.replace(/\/$/, "");
+
+      // 1.0 Image Proxy endpoint (bypasses Fandom/Wikia Cloudflare 403 blocks)
+      if (cleanPath === "/api/proxy-image") {
+        const targetUrl = url.searchParams.get("url");
+        if (!targetUrl || (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://"))) {
+          return jsonResponse({ error: "Missing or invalid url query parameter" }, 400);
+        }
+        try {
+          const imgRes = await fetch(targetUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Referer": "https://caldo-de-dragon.fandom.com/",
+              "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            },
+          });
+          if (imgRes.ok) {
+            const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+            return new Response(imgRes.body, {
+              status: 200,
+              headers: {
+                "Content-Type": contentType,
+                "Cache-Control": "public, max-age=604800, stale-while-revalidate=2592000",
+                ...CORS_HEADERS,
+              },
+            });
+          }
+        } catch (err: any) {
+          console.warn("[Worker Proxy-Image Error]:", err);
+        }
+        return jsonResponse({ error: "Failed to fetch remote image" }, 502);
+      }
 
       // 1.1 Tarot AI Chatbot Endpoint
       if (cleanPath === "/api/ai/chat" && request.method === "POST") {
@@ -297,14 +321,12 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
             { role: "system", content: systemPrompt },
           ];
 
-          // Add history context (up to last 6 messages)
           history.slice(-6).forEach((h: any) => {
             const role = h.role === "user" || h.role === "client" ? "user" : "assistant";
             const text = h.text || h.content || h.message || "";
             if (text) messages.push({ role, content: text });
           });
 
-          // Add current message
           messages.push({ role: "user", content: userMessage });
 
           const aiReply = await callMultiProviderAI(messages, env, false, 0.7);
@@ -393,7 +415,31 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
         return jsonResponse({ success: true, message: "Cambios consagrados en el manuscrito." });
       }
 
-      // 1.6 Articles endpoint (Live from GitHub with static fallback)
+      // 1.6 Single Article endpoint: /api/articles/:slug
+      if (cleanPath.startsWith("/api/articles/")) {
+        const slugOrId = decodeURIComponent(cleanPath.replace("/api/articles/", "").replace(/\/$/, ""));
+        const articlesRes = await fetchRepoData(env, request, "src/data/articles.json", "/data/articles.json");
+        if (articlesRes.ok) {
+          const articles: any[] = await articlesRes.json();
+          const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          const targetNorm = norm(slugOrId);
+
+          const found = articles.find((a: any) => 
+            a.slug === slugOrId || 
+            a.id === slugOrId || 
+            norm(a.slug || "") === targetNorm || 
+            norm(a.id || "") === targetNorm ||
+            norm(a.title || "") === targetNorm
+          );
+
+          if (found) {
+            return jsonResponse(found);
+          }
+        }
+        return jsonResponse({ error: "Article not found" }, 404);
+      }
+
+      // 1.7 All Articles endpoint: GET /api/articles
       if (cleanPath === "/api/articles") {
         if (request.method === "GET") {
           return await fetchRepoData(env, request, "src/data/articles.json", "/data/articles.json");
@@ -401,7 +447,7 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
         return jsonResponse({ success: true, message: "Artículo procesado con éxito" });
       }
 
-      // 1.7 Articles synchronization endpoint
+      // 1.8 Articles synchronization endpoint
       if (cleanPath === "/api/articles/sync") {
         return jsonResponse({
           updates: [],
@@ -411,42 +457,64 @@ Evita rodeos innecesarios o textos vacíos. Si el usuario te saluda, salúdalo c
         });
       }
 
-      // 1.8 Categories endpoint (Live from GitHub)
+      // 1.9 Categories endpoint
       if (cleanPath === "/api/categories") {
         return await fetchRepoData(env, request, "src/data/categories.json", "/data/categories.json");
       }
 
-      // 1.9 Campaign Events endpoint (Live from GitHub)
+      // 1.10 Campaign Events endpoint (Always returns { events: [...], count: ... })
       if (cleanPath === "/api/campaign-events") {
-        return await fetchRepoData(env, request, "src/data/campaign_events.json", "/data/campaign_events.json");
+        const eventsRes = await fetchRepoData(env, request, "src/data/campaign_events.json", "/data/campaign_events.json");
+        if (eventsRes.ok) {
+          const raw = await eventsRes.json();
+          const events = Array.isArray(raw) ? raw : (Array.isArray(raw?.events) ? raw.events : []);
+          return jsonResponse({ events, count: events.length });
+        }
+        return jsonResponse({ events: [], count: 0 });
       }
 
-      // 1.10 Site UI Config endpoint (Live from GitHub)
+      // 1.11 Site UI Config endpoint
       if (cleanPath === "/api/site-ui-config") {
         return await fetchRepoData(env, request, "src/data/site_ui_config.json", "/data/site_ui_config.json");
       }
 
-      // 1.11 Filter Categories endpoint (Live from GitHub)
+      // 1.12 Filter Categories endpoint
       if (cleanPath === "/api/filter-categories") {
         return await fetchRepoData(env, request, "src/data/filter_categories.json", "/data/filter_categories.json");
       }
 
-      // 1.12 Maps endpoint (Live from GitHub)
+      // 1.13 Maps endpoint
       if (cleanPath === "/api/cartocraft/maps" || cleanPath === "/api/maps") {
         return await fetchRepoData(env, request, "src/data/maps.json", "/data/maps.json");
       }
 
-      // 1.13 Genealogy Tree endpoint (Live from GitHub)
+      // 1.14 Genealogy Tree endpoint
       if (cleanPath === "/api/genealogy") {
         return await fetchRepoData(env, request, "src/data/genealogy_tree.json", "/data/genealogy_tree.json");
       }
 
-      // 1.14 Spells / Spellbook endpoint (Live from GitHub)
-      if (cleanPath === "/api/spells" || cleanPath === "/api/spellbook") {
-        return await fetchRepoData(env, request, "src/data/spells.json", "/data/spells.json");
+      // 1.15 Spells / Spellbook endpoint (Always returns { spells: [...], count: ... })
+      if (cleanPath === "/api/spellbook/spells" || cleanPath === "/api/spells") {
+        const spellsRes = await fetchRepoData(env, request, "src/data/spells.json", "/data/spellbook_spells.json");
+        if (spellsRes.ok) {
+          const raw = await spellsRes.json();
+          const spells = Array.isArray(raw) ? raw : (Array.isArray(raw?.spells) ? raw.spells : []);
+          return jsonResponse({ spells, count: spells.length });
+        }
+        return jsonResponse({ spells: [], count: 0 });
       }
 
-      // 1.15 Discord Bot status endpoint
+      // 1.16 Timeline markers endpoint
+      if (cleanPath === "/api/timeline") {
+        return await fetchRepoData(env, request, "src/data/timeline_markers.json", "/data/timeline_markers.json");
+      }
+
+      // 1.17 Bestiary / D&D 5e monsters endpoint
+      if (cleanPath.startsWith("/api/dnd5e-monsters")) {
+        return jsonResponse([]);
+      }
+
+      // 1.18 Discord Bot status endpoint
       if (cleanPath === "/api/bot/status") {
         return jsonResponse({
           active: false,

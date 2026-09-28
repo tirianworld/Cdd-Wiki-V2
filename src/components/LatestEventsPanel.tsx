@@ -40,9 +40,8 @@ export function LatestEventsPanel({ articles = [] }: LatestEventsPanelProps) {
       setLoading(true);
       const res = await fetch("/api/campaign-events");
       const data = await res.json();
-      if (Array.isArray(data.events)) {
-        setEvents(data.events);
-      }
+      const list = Array.isArray(data?.events) ? data.events : (Array.isArray(data) ? data : []);
+      setEvents(list);
     } catch (err) {
       console.error("Error fetching campaign events:", err);
     } finally {
