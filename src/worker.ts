@@ -111,31 +111,37 @@ async function callMultiProviderAI(
   wantsJson = false,
   temperature = 0.7
 ): Promise<string> {
+  const getVar = (key: string): string => {
+    const val = 
+      (env && typeof env[key] === "string" ? env[key] : "") ||
+      (typeof globalThis !== "undefined" && typeof (globalThis as any)[key] === "string" ? (globalThis as any)[key] : "") ||
+      (typeof process !== "undefined" && process?.env && typeof process.env[key] === "string" ? process.env[key] : "");
+    return (val || "").trim();
+  };
+
   const groqKeys = [
-    env.GROQ_API_KEY,
-    env.GROQ_API_KEY_2,
-    env.GROQ_API_KEY_3,
-    env.GROQ_API_KEY_4,
-    typeof process !== "undefined" ? process.env?.GROQ_API_KEY : undefined,
-  ].filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0));
+    getVar("GROQ_API_KEY"),
+    getVar("GROQ_API_KEY_2"),
+    getVar("GROQ_API_KEY_3"),
+    getVar("GROQ_API_KEY_4"),
+  ].filter(Boolean);
 
   const cerebrasKeys = [
-    env.CEREBRAS_API_KEY,
-    env.CEREBRAS_API_KEY_2,
-    env.CEREBRAS_API_KEY_3,
-    typeof process !== "undefined" ? process.env?.CEREBRAS_API_KEY : undefined,
-  ].filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0));
+    getVar("CEREBRAS_API_KEY"),
+    getVar("CEREBRAS_API_KEY_2"),
+    getVar("CEREBRAS_API_KEY_3"),
+  ].filter(Boolean);
 
   const mistralKeys = [
-    env.MISTRAL_API_KEY,
-    env.MISTRAL_API_KEY_2,
-    env.MISTRAL_API_KEY_4,
-    typeof process !== "undefined" ? process.env?.MISTRAL_API_KEY : undefined,
-  ].filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0));
+    getVar("MISTRAL_API_KEY"),
+    getVar("MISTRAL_API_KEY_2"),
+    getVar("MISTRAL_API_KEY_4"),
+  ].filter(Boolean);
 
   if (groqKeys.length === 0 && cerebrasKeys.length === 0 && mistralKeys.length === 0) {
+    const detected = Object.keys(env || {}).filter(k => k !== "ASSETS");
     throw new Error(
-      "No hay ninguna API key configurada en Cloudflare. Configura GROQ_API_KEY en Settings > Variables and Secrets."
+      `No se detectó ninguna API key en el Worker. Variables vinculadas en este despliegue: [${detected.join(", ") || "ninguna"}]. En Cloudflare, edita cada clave en Settings > Variables and Secrets y cámbiala a tipo 'Secret' (o pulsa 'Encrypt') y vuelve a desplegar.`
     );
   }
 
