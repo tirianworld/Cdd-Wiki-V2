@@ -6,9 +6,17 @@ export interface Env {
   GITHUB_REPO?: string;
   GITHUB_BRANCH?: string;
   GROQ_API_KEY?: string;
+  GROQ_API_KEY_2?: string;
+  GROQ_API_KEY_3?: string;
+  GROQ_API_KEY_4?: string;
   CEREBRAS_API_KEY?: string;
+  CEREBRAS_API_KEY_2?: string;
+  CEREBRAS_API_KEY_3?: string;
   MISTRAL_API_KEY?: string;
+  MISTRAL_API_KEY_2?: string;
+  MISTRAL_API_KEY_4?: string;
   BACKEND_URL?: string;
+  [key: string]: any;
 }
 
 const CORS_HEADERS: Record<string, string> = {
@@ -96,33 +104,51 @@ async function fetchRepoData(
   return jsonResponse([]);
 }
 
-// Multi-provider AI Caller: Groq -> Cerebras -> Mistral
+// Multi-provider AI Caller: Groq -> Cerebras -> Mistral with multi-key and multi-model failover
 async function callMultiProviderAI(
   messages: Array<{ role: string; content: string }>,
   env: Env,
   wantsJson = false,
   temperature = 0.7
 ): Promise<string> {
-  const groqKey = env.GROQ_API_KEY;
-  const cerebrasKey = env.CEREBRAS_API_KEY;
-  const mistralKey = env.MISTRAL_API_KEY;
+  const groqKeys = [
+    env.GROQ_API_KEY,
+    env.GROQ_API_KEY_2,
+    env.GROQ_API_KEY_3,
+    env.GROQ_API_KEY_4,
+    typeof process !== "undefined" ? process.env?.GROQ_API_KEY : undefined,
+  ].filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0));
 
-  if (!groqKey && !cerebrasKey && !mistralKey) {
+  const cerebrasKeys = [
+    env.CEREBRAS_API_KEY,
+    env.CEREBRAS_API_KEY_2,
+    env.CEREBRAS_API_KEY_3,
+    typeof process !== "undefined" ? process.env?.CEREBRAS_API_KEY : undefined,
+  ].filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0));
+
+  const mistralKeys = [
+    env.MISTRAL_API_KEY,
+    env.MISTRAL_API_KEY_2,
+    env.MISTRAL_API_KEY_4,
+    typeof process !== "undefined" ? process.env?.MISTRAL_API_KEY : undefined,
+  ].filter((k): k is string => Boolean(k && typeof k === "string" && k.trim().length > 0));
+
+  if (groqKeys.length === 0 && cerebrasKeys.length === 0 && mistralKeys.length === 0) {
     throw new Error(
       "No hay ninguna API key configurada en Cloudflare. Configura GROQ_API_KEY en Settings > Variables and Secrets."
     );
   }
 
-  // 1. Try Groq (Primary high-speed provider)
-  if (groqKey) {
-    const groqModels = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+  // 1. Try Groq (Primary high-speed provider across all available keys)
+  const groqModels = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
+  for (const key of groqKeys) {
     for (const model of groqModels) {
       try {
         const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${groqKey}`,
+            Authorization: `Bearer ${key}`,
           },
           body: JSON.stringify({
             model,
@@ -138,6 +164,9 @@ async function callMultiProviderAI(
           if (content && typeof content === "string") {
             return content.trim();
           }
+        } else {
+          const errText = await res.text().catch(() => "");
+          console.warn(`[Groq ${model}] HTTP ${res.status}:`, errText);
         }
       } catch (err) {
         console.warn(`[Groq ${model}] error:`, err);
@@ -145,16 +174,16 @@ async function callMultiProviderAI(
     }
   }
 
-  // 2. Try Cerebras (Ultra-fast inference backup)
-  if (cerebrasKey) {
-    const cerebrasModels = ["gpt-oss-120b", "qwen-3.8-27b"];
+  // 2. Try Cerebras (Ultra-fast inference backup across all available keys)
+  const cerebrasModels = ["gpt-oss-120b", "qwen-3.8-27b"];
+  for (const key of cerebrasKeys) {
     for (const model of cerebrasModels) {
       try {
         const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${cerebrasKey}`,
+            Authorization: `Bearer ${key}`,
           },
           body: JSON.stringify({
             model,
@@ -177,16 +206,16 @@ async function callMultiProviderAI(
     }
   }
 
-  // 3. Try Mistral (European high-capability backup)
-  if (mistralKey) {
-    const mistralModels = ["mistral-small-latest", "open-mistral-7b"];
+  // 3. Try Mistral (European high-capability backup across all available keys)
+  const mistralModels = ["mistral-small-latest", "open-mistral-7b"];
+  for (const key of mistralKeys) {
     for (const model of mistralModels) {
       try {
         const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${mistralKey}`,
+            Authorization: `Bearer ${key}`,
           },
           body: JSON.stringify({
             model,
