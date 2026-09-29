@@ -25,6 +25,9 @@ import { ArticleTarotScribeModal } from "./ArticleTarotScribeModal";
 import { WebBuilderCanvas } from "./webbuilder/WebBuilderCanvas";
 import { SpellbookSpell } from "../types";
 import { getSpellIconUrl, SCHOOL_COLORS } from "./SpellbookSpellPickerModal";
+import { HeroForgeViewer } from "./HeroForgeViewer";
+import { HeroForgeEmbedData } from "../types";
+import { processHeroForgeShortcodes } from "../utils/heroForgeHelper";
 
 function splitIntoShortPhrases(text: string): string[] {
   const sentences = text.split(/(?<=[.!?¿¡;])\s+/);
@@ -971,7 +974,7 @@ export function ArticleView() {
   })) : [];
   const currentGalleryItem = safeGallery[activeGalleryIndex] || safeGallery[0] || null;
 
-  // Process HTML body and timeline content to safely proxy external blocked images and parse graph shortcodes
+  // Process HTML body and timeline content to safely proxy external blocked images and parse graph/heroforge shortcodes
   const processedContent = useMemo(() => {
     if (!article?.content) return "<p>No hay descripción para este manuscrito místico.</p>";
     let result = article.content.replace(/src=["'](https?:\/\/[^"']+)["']/g, (_match, url) => {
@@ -986,24 +989,29 @@ export function ArticleView() {
       };
       return `<div class="dragopedia-graph-embed my-6" data-graph="${encodeURIComponent(JSON.stringify(cfg))}"></div>`;
     });
+    // Parse Hero Forge shortcodes like [heroforge url="..." name="..."]
+    result = processHeroForgeShortcodes(result);
     return result;
   }, [article?.content]);
 
   const processedTimelineContent = useMemo(() => {
     if (!activeTimelineMarker?.content) return "";
-    return activeTimelineMarker.content.replace(/src=["'](https?:\/\/[^"']+)["']/g, (_match, url) => {
+    let res = activeTimelineMarker.content.replace(/src=["'](https?:\/\/[^"']+)["']/g, (_match, url) => {
       return `src="${getSafeImageUrl(url)}"`;
     });
+    res = processHeroForgeShortcodes(res);
+    return res;
   }, [activeTimelineMarker?.content]);
 
-  // Mount interactive EmbeddedGraphViewer into any embedded graph placeholders inside the article content
+  // Mount interactive EmbeddedGraphViewer & HeroForgeViewer into placeholders inside the article content
   useEffect(() => {
     const container = wikiContentRef.current;
     if (!container) return;
 
-    const embedEls = container.querySelectorAll<HTMLElement>(".dragopedia-graph-embed");
     const roots: Array<{ unmount: () => void }> = [];
 
+    // 1. Mount Embedded Graphs
+    const embedEls = container.querySelectorAll<HTMLElement>(".dragopedia-graph-embed");
     embedEls.forEach((el) => {
       if (el.getAttribute("data-react-mounted") === "true") return;
       el.setAttribute("data-react-mounted", "true");
@@ -1044,6 +1052,36 @@ export function ArticleView() {
       );
     });
 
+    // 2. Mount Hero Forge 3D Miniature Viewers
+    const heroForgeEls = container.querySelectorAll<HTMLElement>(".heroforge-embed-container");
+    heroForgeEls.forEach((el) => {
+      if (el.getAttribute("data-react-mounted") === "true") return;
+      el.setAttribute("data-react-mounted", "true");
+
+      let hfData: HeroForgeEmbedData = {
+        url: "https://www.heroforge.com",
+        name: "Miniatura Hero Forge",
+      };
+
+      const rawData = el.getAttribute("data-heroforge");
+      if (rawData) {
+        try {
+          hfData = JSON.parse(decodeURIComponent(rawData));
+        } catch {
+          try {
+            hfData = JSON.parse(rawData);
+          } catch (e) {
+            console.warn("Could not parse data-heroforge on element:", e);
+          }
+        }
+      }
+
+      el.innerHTML = "";
+      const root = createRoot(el);
+      roots.push(root);
+      root.render(<HeroForgeViewer data={hfData} />);
+    });
+
     return () => {
       roots.forEach((r) => {
         try {
@@ -1051,7 +1089,7 @@ export function ArticleView() {
         } catch {}
       });
     };
-  }, [processedContent, allArticles]);
+  }, [processedContent, processedTimelineContent, allArticles]);
 
   // Resolve embedded graph for the article: explicitly configured or smart detection for schools of magic / pillars
   const resolvedEmbeddedGraph = useMemo(() => {

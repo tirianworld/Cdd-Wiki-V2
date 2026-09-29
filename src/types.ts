@@ -295,3 +295,17 @@ export interface SpellbookSpell {
 }
 
 export type Spell = SpellbookSpell;
+
+export interface HeroForgeEmbedData {
+  url: string; // e.g. https://www.heroforge.com/load_config%3D46397739/
+  configId?: string;
+  name: string;
+  race?: string;
+  characterClass?: string;
+  description?: string;
+  imageUrl?: string;
+  modelUrl?: string;
+  style?: "showcase" | "token" | "compact";
+  height?: number;
+  rotationSpeed?: number;
+}

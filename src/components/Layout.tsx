@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   Flame, Users, MapPin, Calendar, Sparkles, Shield, Heart, Gem, PawPrint,
   Menu, X, Search, FilePlus, Network, Compass, HelpCircle, BookOpen, SlidersHorizontal, Database, MessageSquare, Book,
-  ChevronDown, Wand2, Layers, Home
+  ChevronDown, Wand2, Layers, Home, PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { TarotLogo } from "./TarotLogo";
@@ -93,6 +93,14 @@ export function Layout({ children }: LayoutProps) {
     }
   });
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("dragopedia_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
   const [appsCollapsed, setAppsCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem("dragopedia_apps_collapsed") === "true";
@@ -100,6 +108,12 @@ export function Layout({ children }: LayoutProps) {
       return false;
     }
   });
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("dragopedia_sidebar_collapsed", String(sidebarCollapsed));
+    } catch {}
+  }, [sidebarCollapsed]);
 
   React.useEffect(() => {
     try {
@@ -158,15 +172,25 @@ export function Layout({ children }: LayoutProps) {
 
       {/* Top sticky header */}
       <header className="sticky top-0 z-50 border-b border-border bg-card/90 backdrop-blur-md">
-        <div className={`flex items-center h-14 px-4 justify-between gap-4 w-full ${isFullWidthPage ? "max-w-none px-4 sm:px-6" : "max-w-[1400px] mx-auto"}`}>
+        <div className="flex items-center h-14 px-4 sm:px-6 justify-between gap-4 w-full">
           
           {/* Logo & Toggle */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="lg:hidden p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+              title={mobileMenuOpen ? "Cerrar menú" : "Abrir menú lateral"}
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+
+            {/* Desktop Sidebar Toggle Button */}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden lg:flex p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-colors cursor-pointer"
+              title={sidebarCollapsed ? "Expandir menú lateral" : "Ocultar menú lateral"}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
 
             <Link to="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
@@ -265,13 +289,40 @@ export function Layout({ children }: LayoutProps) {
       {/* Quick Selection Floating Tooltip */}
       <SelectionSearchTooltip />
 
-      {/* Main Container */}
-      <div className={`flex flex-1 w-full relative ${isFullWidthPage ? "max-w-none" : "max-w-[1400px] mx-auto"}`}>
+      {/* Main Container: Full width so the sidebar is ALWAYS attached to the left border on all pages */}
+      <div className="flex flex-1 w-full relative">
         
-        {/* Navigation Sidebar (Desktop + Mobile overlay) */}
+        {/* Mobile Backdrop */}
+        {mobileMenuOpen && (
+          <div 
+            className="fixed inset-0 top-14 z-40 bg-black/65 backdrop-blur-sm lg:hidden animate-in fade-in duration-200"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Floating left-edge reopen button if sidebar is collapsed on desktop */}
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed(false)}
+            className="hidden lg:flex fixed top-20 left-0 z-30 p-2 pl-2.5 pr-3 rounded-r-xl bg-card/95 hover:bg-card border-y border-r border-amber-500/40 text-amber-400 hover:text-amber-300 shadow-2xl backdrop-blur-md transition-all hover:pl-3.5 group items-center gap-1.5 cursor-pointer"
+            title="Expandir menú lateral"
+          >
+            <PanelLeftOpen className="h-4 w-4 group-hover:scale-110 transition-transform" />
+            <span className="text-[11px] font-bold uppercase tracking-wider font-heading">Menú</span>
+          </button>
+        )}
+
+        {/* Navigation Sidebar (Desktop + Mobile drawer): Placed at the left border across all pages */}
         <aside className={`
-          ${mobileMenuOpen ? "fixed inset-0 top-14 z-40 bg-background/95 block" : "hidden"}
-          lg:block lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] w-60 shrink-0 border-r border-border overflow-y-auto p-4 bg-card/45
+          ${mobileMenuOpen 
+            ? "fixed top-14 left-0 bottom-0 z-50 w-64 bg-card/95 border-r border-border shadow-2xl overflow-y-auto p-4 block animate-in slide-in-from-left duration-200" 
+            : "hidden"
+          }
+          ${sidebarCollapsed 
+            ? "lg:hidden" 
+            : "lg:block lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] w-60 shrink-0 border-r border-border overflow-y-auto p-4 bg-card/45 backdrop-blur-md transition-all duration-300"
+          }
         `}>
           <div className="space-y-6">
             

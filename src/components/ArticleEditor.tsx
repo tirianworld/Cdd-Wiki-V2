@@ -8,10 +8,11 @@ import {
   ArrowLeft, ArrowRight, Save, Plus, Trash2, Calendar, Gem, Link2, Info, Loader2, Image, List, Check, Compass,
   Bold, Italic, HelpCircle, FileText, Layers, Settings, Eye, Code, Sparkles, Maximize2, Minimize2, RotateCcw, ExternalLink,
   Wand2, Swords, ShieldCheck, ShieldAlert, Table, Undo2, AlertTriangle, CheckCircle2, ChevronRight, X, MessageSquare, GitMerge,
-  Network, Orbit, Sliders, UploadCloud
+  Network, Orbit, Sliders, UploadCloud, Box
 } from "lucide-react";
 import { uploadImageToServerAndGitHub, readFileAsDataURL } from "../utils/localImageStorage";
 import { CartoCraftMapPickerModal } from "./CartoCraftMapPickerModal";
+import { HeroForgeEmbedModal } from "./HeroForgeEmbedModal";
 import { GraphPickerModal } from "./GraphPickerModal";
 import { EmbeddedGraphViewer } from "./EmbeddedGraphViewer";
 import { ArticleEmbeddedGraph } from "../types";
@@ -113,8 +114,9 @@ export function ArticleEditor() {
   const [markerPlainContents, setMarkerPlainContents] = useState<Record<string, string>>({});
   const markerTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
-  // Modals for CartoCraft map embedding, Graphs/Subgraphs, Diario del Cazador creatures, and Art Gallery Picker
+  // Modals for CartoCraft map embedding, HeroForge 3D miniatures, Graphs/Subgraphs, Diario del Cazador creatures, and Art Gallery Picker
   const [showCartoCraftModal, setShowCartoCraftModal] = useState(false);
+  const [showHeroForgeModal, setShowHeroForgeModal] = useState(false);
   const [showGraphModal, setShowGraphModal] = useState(false);
   const [embeddedGraph, setEmbeddedGraph] = useState<ArticleEmbeddedGraph | null>(
     () => cachedArt?.embedded_graph || null
@@ -512,6 +514,23 @@ export function ArticleEditor() {
   };
 
   const handleInsertCartoCraftIntoContent = (embedHtml: string, embedMarkdown: string) => {
+    if (modalTargetMarkerId) {
+      const isCode = markerTabs[modalTargetMarkerId] === "code";
+      if (isCode) {
+        insertHtmlTagForMarker(modalTargetMarkerId, embedHtml, "");
+      } else {
+        insertPlainTagForMarker(modalTargetMarkerId, embedMarkdown, "");
+      }
+    } else {
+      if (editorTab === "code") {
+        insertHtmlTag(embedHtml, "");
+      } else {
+        insertPlainTag(embedMarkdown, "");
+      }
+    }
+  };
+
+  const handleInsertHeroForgeIntoContent = (embedHtml: string, embedMarkdown: string) => {
     if (modalTargetMarkerId) {
       const isCode = markerTabs[modalTargetMarkerId] === "code";
       if (isCode) {
@@ -1737,6 +1756,18 @@ export function ArticleEditor() {
                       type="button"
                       onClick={() => {
                         setModalTargetMarkerId(null);
+                        setShowHeroForgeModal(true);
+                      }}
+                      className="p-1.5 px-2.5 bg-card hover:bg-secondary border border-border/60 hover:border-amber-500/50 rounded text-amber-400 font-bold text-[10px] transition-all flex items-center gap-1 shadow-sm cursor-pointer"
+                      title="Incrustar Miniatura 3D de Hero Forge (heroforge.com)"
+                    >
+                      <Box className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Miniatura HeroForge</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalTargetMarkerId(null);
                         setShowGraphModal(true);
                       }}
                       className="p-1.5 px-2.5 bg-card hover:bg-secondary border border-border/60 hover:border-cyan-500/50 rounded text-cyan-400 font-bold text-[10px] transition-all flex items-center gap-1 shadow-sm cursor-pointer"
@@ -1862,6 +1893,18 @@ export function ArticleEditor() {
                     >
                       <Compass className="h-3.5 w-3.5 text-primary" />
                       <span>Mapa CartoCraft</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalTargetMarkerId(null);
+                        setShowHeroForgeModal(true);
+                      }}
+                      className="p-1.5 px-2.5 bg-card hover:bg-secondary border border-border/60 hover:border-amber-500/50 rounded text-amber-400 font-bold text-[10px] transition-all flex items-center gap-1 shadow-sm cursor-pointer"
+                      title="Incrustar Miniatura 3D de Hero Forge (heroforge.com)"
+                    >
+                      <Box className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Miniatura HeroForge</span>
                     </button>
                     <button
                       type="button"
@@ -3403,6 +3446,18 @@ export function ArticleEditor() {
                       type="button"
                       onClick={() => {
                         setModalTargetMarkerId(null);
+                        setShowHeroForgeModal(true);
+                      }}
+                      className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-amber-500/50 rounded text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                      title="Incrustar Miniatura 3D de Hero Forge (heroforge.com)"
+                    >
+                      <Box className="h-4 w-4 text-amber-400" />
+                      <span>Miniatura HeroForge</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalTargetMarkerId(null);
                         setShowGraphModal(true);
                       }}
                       className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-cyan-500/50 rounded text-cyan-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
@@ -3527,6 +3582,18 @@ export function ArticleEditor() {
                     >
                       <Compass className="h-4 w-4 text-primary" />
                       <span>Mapa CartoCraft</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalTargetMarkerId(null);
+                        setShowHeroForgeModal(true);
+                      }}
+                      className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-amber-500/50 rounded text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                      title="Incrustar Miniatura 3D de Hero Forge (heroforge.com)"
+                    >
+                      <Box className="h-4 w-4 text-amber-400" />
+                      <span>Miniatura HeroForge</span>
                     </button>
                     <button
                       type="button"
@@ -3662,6 +3729,18 @@ export function ArticleEditor() {
                         type="button"
                         onClick={() => {
                           setModalTargetMarkerId(mId);
+                          setShowHeroForgeModal(true);
+                        }}
+                        className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-amber-500/50 rounded text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        title="Incrustar Miniatura 3D de Hero Forge (heroforge.com)"
+                      >
+                        <Box className="h-4 w-4 text-amber-400" />
+                        <span>Miniatura HeroForge</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalTargetMarkerId(mId);
                           setShowGraphModal(true);
                         }}
                         className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-cyan-500/50 rounded text-cyan-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
@@ -3780,6 +3859,18 @@ export function ArticleEditor() {
                         type="button"
                         onClick={() => {
                           setModalTargetMarkerId(mId);
+                          setShowHeroForgeModal(true);
+                        }}
+                        className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-amber-500/50 rounded text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        title="Incrustar Miniatura 3D de Hero Forge (heroforge.com)"
+                      >
+                        <Box className="h-4 w-4 text-amber-400" />
+                        <span>Miniatura HeroForge</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalTargetMarkerId(mId);
                           setShowGraphModal(true);
                         }}
                         className="p-1.5 px-3 bg-card hover:bg-secondary border border-border/60 hover:border-cyan-500/50 rounded text-cyan-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
@@ -3833,6 +3924,13 @@ export function ArticleEditor() {
         onInsertIntoContent={(html, md) => handleInsertCartoCraftIntoContent(html, md)}
         onSetArticleMapUrl={(url) => setMapUrl(url)}
         currentMapUrl={mapUrl}
+      />
+
+      {/* Hero Forge Miniature Picker Modal */}
+      <HeroForgeEmbedModal
+        isOpen={showHeroForgeModal}
+        onClose={() => setShowHeroForgeModal(false)}
+        onInsertIntoContent={(html, md) => handleInsertHeroForgeIntoContent(html, md)}
       />
 
       {/* Graph & Subgraph Picker Modal */}
