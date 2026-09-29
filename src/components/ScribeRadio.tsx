@@ -1135,7 +1135,7 @@ export function ScribeRadio() {
   const currentFranchiseColor = currentTrack.color;
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 font-sans select-none">
+    <div className="fixed bottom-5 left-4 lg:left-[260px] z-40 font-sans select-none pointer-events-auto">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -1143,7 +1143,7 @@ export function ScribeRadio() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 15, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="mb-3 w-[420px] max-w-[calc(100vw-2rem)] bg-card/95 border border-border/80 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden backdrop-blur-xl flex flex-col max-h-[85vh]"
+            className="mb-3 w-[420px] max-w-[calc(100vw-2rem)] lg:max-w-[calc(100vw-18rem)] bg-card/95 border border-border/80 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden backdrop-blur-xl flex flex-col max-h-[85vh]"
           >
             {/* Header */}
             <div className="p-3 bg-secondary/40 border-b border-border/60 flex items-center justify-between shrink-0">
