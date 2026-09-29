@@ -17,25 +17,37 @@ interface CategoryContextType {
 
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
 
+import defaultCategoriesData from "../data/categories.json";
+
 export function CategoryProvider({ children }: { children: React.ReactNode }) {
-  const [customCategories, setCustomCategories] = useState<WikiCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customCategories, setCustomCategories] = useState<WikiCategory[]>(() => {
+    return Array.isArray(defaultCategoriesData) ? (defaultCategoriesData as unknown as WikiCategory[]) : [];
+  });
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshCategories = async () => {
     try {
-      setLoading(true);
       const res = await fetch("/api/categories");
       if (res.ok) {
         const data = await res.json();
-        setCustomCategories(data);
-        setError(null);
-      } else {
-        throw new Error("No se pudieron cargar las categorías del servidor.");
+        if (Array.isArray(data) && data.length > 0) {
+          setCustomCategories(data);
+          setError(null);
+          return;
+        }
       }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Error al conectar con la biblioteca.");
+      // Fallback for static export / GitHub Pages
+      const staticRes = await fetch(`${import.meta.env.BASE_URL}data/categories.json`);
+      if (staticRes.ok) {
+        const staticData = await staticRes.json();
+        if (Array.isArray(staticData) && staticData.length > 0) {
+          setCustomCategories(staticData);
+          setError(null);
+        }
+      }
+    } catch {
+      // In offline / static export mode, defaultCategoriesData is already loaded
     } finally {
       setLoading(false);
     }

@@ -219,6 +219,22 @@ export function WorldMapsBanner() {
     setPan({ x: 0, y: 0 });
   }, [isLightboxOpen, currentIndex]);
 
+  // Escape key and arrow keys listener when lightbox is open
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsLightboxOpen(false);
+      } else if (e.key === "ArrowLeft") {
+        handlePrev();
+      } else if (e.key === "ArrowRight") {
+        handleNext();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isLightboxOpen, currentIndex]);
+
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.35, 3.5));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.35, 0.7));
   const handleResetZoom = () => {
@@ -421,79 +437,10 @@ export function WorldMapsBanner() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col"
+            className="fixed top-14 inset-x-0 bottom-0 z-40 bg-black/95 backdrop-blur-md flex flex-col overflow-hidden"
             onClick={() => setIsLightboxOpen(false)}
           >
-            {/* Modal Header */}
-            <div 
-              className="flex items-center justify-between px-6 py-4 border-b border-border/60 bg-card/60 backdrop-blur-md z-20"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
-                  <Compass className="h-4.5 w-4.5" />
-                </div>
-                <div>
-                  <h3 className="font-heading text-lg font-bold text-foreground">
-                    {currentMap.name} — {currentMap.subtitle}
-                  </h3>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{currentMap.category}</span>
-                    <span>•</span>
-                    <span>Arrastra o usa la rueda para ampliar y examinar</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Zoom controls, assign button and close */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setIsAssignModalOpen(true);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-secondary/60 hover:bg-secondary border border-border/60 text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors mr-2"
-                >
-                  <ImageIcon className="h-3.5 w-3.5 text-primary" />
-                  <span>Cambiar Imagen</span>
-                </button>
-
-                <div className="flex items-center bg-secondary/50 border border-border/60 rounded-xl p-1 gap-1">
-                  <button
-                    onClick={handleZoomOut}
-                    title="Reducir zoom"
-                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ZoomOut className="h-4 w-4" />
-                  </button>
-                  <span className="text-xs font-mono px-2 text-foreground/80 min-w-[50px] text-center">
-                    {Math.round(zoom * 100)}%
-                  </span>
-                  <button
-                    onClick={handleZoomIn}
-                    title="Aumentar zoom"
-                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ZoomIn className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={handleResetZoom}
-                    title="Restablecer"
-                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => setIsLightboxOpen(false)}
-                  className="h-9 w-9 rounded-xl bg-secondary/60 hover:bg-secondary border border-border/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors ml-2"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Canvas */}
+            {/* Modal Canvas with full viewport */}
             <div 
               className="flex-1 relative overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing p-4 select-none"
               onMouseDown={handleMouseDown}
@@ -501,6 +448,74 @@ export function WorldMapsBanner() {
               onMouseUp={handleMouseUp}
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Floating Map Info in Top-Left */}
+              <div 
+                className="absolute top-4 left-4 sm:top-5 sm:left-6 z-30 flex items-center gap-2.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-card/85 hover:bg-card border border-border/80 backdrop-blur-md shadow-xl transition-all"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Compass className="h-4 w-4 text-primary shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-heading text-xs sm:text-sm font-bold text-foreground tracking-wide">
+                    {currentMap.name}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                    • {currentMap.subtitle}
+                  </span>
+                </div>
+              </div>
+
+              {/* Floating Controls & Close Button (X) in Top-Right */}
+              <div 
+                className="absolute top-4 right-4 sm:top-5 sm:right-6 z-40 flex items-center gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Zoom controls */}
+                <div className="hidden sm:flex items-center bg-card/85 border border-border/80 rounded-xl p-1 gap-0.5 backdrop-blur-md shadow-xl">
+                  <button
+                    onClick={handleZoomOut}
+                    title="Reducir zoom"
+                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </button>
+                  <span className="text-xs font-mono px-1.5 text-foreground/80 min-w-[42px] text-center select-none">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <button
+                    onClick={handleZoomIn}
+                    title="Aumentar zoom"
+                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleResetZoom}
+                    title="Restablecer"
+                    className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* Change image modal trigger */}
+                <button
+                  onClick={() => setIsAssignModalOpen(true)}
+                  className="hidden md:flex px-3 py-1.5 rounded-xl bg-card/85 hover:bg-card border border-border/80 text-xs font-semibold text-foreground items-center gap-1.5 backdrop-blur-md shadow-xl transition-colors cursor-pointer"
+                >
+                  <ImageIcon className="h-3.5 w-3.5 text-primary" />
+                  <span>Cambiar Imagen</span>
+                </button>
+
+                {/* Prominent Close Button (X) */}
+                <button
+                  onClick={() => setIsLightboxOpen(false)}
+                  aria-label="Cerrar mapa"
+                  title="Cerrar mapa (Esc)"
+                  className="h-10 w-10 sm:h-11 sm:w-11 rounded-full bg-card/90 hover:bg-card border border-border/80 text-foreground hover:text-red-400 hover:border-red-500/40 shadow-2xl flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 cursor-pointer group"
+                >
+                  <X className="h-5 w-5 sm:h-6 sm:w-6 group-hover:rotate-90 transition-transform duration-200" />
+                </button>
+              </div>
               <div
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,

@@ -353,10 +353,14 @@ export async function syncFetch(
           }
         }
         
-        // If response is not ok (e.g. 404 on static hosting or 500 error), try fallback to /data/articles.json
+        // If response is not ok (e.g. 404 on static hosting or 500 error), try fallback to data/articles.json
         try {
-          const fallbackRes = await originalFetch("/data/articles.json");
-          if (fallbackRes.ok) {
+          const staticDataUrl = `${import.meta.env.BASE_URL}data/articles.json`;
+          let fallbackRes = await originalFetch(staticDataUrl).catch(() => null);
+          if (!fallbackRes || !fallbackRes.ok) {
+            fallbackRes = await originalFetch("https://raw.githubusercontent.com/tirianworld/Cdd-Wiki-V2/main/src/data/articles.json").catch(() => null);
+          }
+          if (fallbackRes && fallbackRes.ok) {
             const clonedFallback = fallbackRes.clone();
             const articles = await clonedFallback.json();
             if (Array.isArray(articles) && articles.length > 0) {
@@ -365,15 +369,19 @@ export async function syncFetch(
             }
           }
         } catch (fErr) {
-          console.warn("[syncArticles] Fallback to /data/articles.json failed:", fErr);
+          console.warn("[syncArticles] Fallback to data/articles.json failed:", fErr);
         }
 
         return response;
       } catch (err) {
         // Network error (e.g. backend not running in static deployment): try static fallback
         try {
-          const fallbackRes = await originalFetch("/data/articles.json");
-          if (fallbackRes.ok) {
+          const staticDataUrl = `${import.meta.env.BASE_URL}data/articles.json`;
+          let fallbackRes = await originalFetch(staticDataUrl).catch(() => null);
+          if (!fallbackRes || !fallbackRes.ok) {
+            fallbackRes = await originalFetch("https://raw.githubusercontent.com/tirianworld/Cdd-Wiki-V2/main/src/data/articles.json").catch(() => null);
+          }
+          if (fallbackRes && fallbackRes.ok) {
             const clonedFallback = fallbackRes.clone();
             const articles = await clonedFallback.json();
             if (Array.isArray(articles) && articles.length > 0) {

@@ -232,65 +232,7 @@ export function Home() {
         />
       )}
 
-      {/* Hero Welcome Section */}
-      <section className="relative overflow-hidden rounded-2xl bg-card border border-border p-8 lg:p-12">
-        <div className="relative max-w-3xl">
-          <div className="flex items-center gap-3.5 mb-5">
-            <div className="h-11 w-11 rounded-xl bg-primary/20 flex items-center justify-center border border-primary/30 shrink-0">
-              <Library className="h-5.5 w-5.5 text-primary" />
-            </div>
-            <EditableText
-              textKey="home.hero.title"
-              defaultValue="Libro de Tarot"
-              as="h1"
-              label="Título Principal"
-              className="font-heading text-2xl lg:text-3.5xl font-bold text-foreground tracking-wide"
-            />
-          </div>
-
-          <div className="mb-6">
-            <EditableText
-              textKey="home.hero.subtitle"
-              defaultValue="La enciclopedia definitiva del universo de Caldo de Dragón. Explora deidades primordiales, héroes de leyenda, dragones mitológicos, órdenes sagradas y reliquias arcanas del Mundo."
-              as="p"
-              multiline={true}
-              label="Descripción Principal"
-              className="text-sm lg:text-base text-muted-foreground leading-relaxed font-light"
-            />
-          </div>
-
-          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-4 border-t border-border/45 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <FileText className="h-4 w-4 text-primary" />
-              <span className="font-medium text-foreground">
-                {featuredArticles.length + latestArticles.length}+{" "}
-                <EditableText
-                  textKey="home.hero.articlesSuffix"
-                  defaultValue="artículos"
-                  label="Etiqueta Artículos"
-                />
-              </span>
-            </div>
-            <span className="text-border">•</span>
-            <div className="flex items-center gap-1.5">
-              <FolderSync className="h-4 w-4 text-accent" />
-              <span className="font-medium text-foreground">
-                {mergedCategories.length}{" "}
-                <EditableText
-                  textKey="home.hero.categoriesSuffix"
-                  defaultValue="categorías"
-                  label="Etiqueta Categorías"
-                />
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Banner Interactivo de Cartografía y Mapas */}
-      <WorldMapsBanner />
-
-      {/* Panel de Últimos Acontecimientos / Novedades de Campañas */}
+      {/* Panel de Últimos Acontecimientos / Novedades de Campañas (Top Section) */}
       <LatestEventsPanel articles={allArticlesList} />
 
       {/* Explore by Category */}
@@ -460,6 +402,9 @@ export function Home() {
           </div>
         )}
       </section>
+
+      {/* Banner Interactivo de Cartografía y Mapas */}
+      <WorldMapsBanner />
 
       {/* Featured Articles */}
       {featuredArticles.length > 0 && (
