@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { WikiArticle, WikiCategory } from "../types";
 import { getCategoryIcon } from "./Layout";
 import { ArticleCard } from "./ArticleCard";
-import { Library, FileText, FolderSync, Edit3, ChevronUp, ChevronDown, Minimize2, Maximize2 } from "lucide-react";
+import { Library, FileText, FolderSync, Edit3, ChevronUp, ChevronDown, Minimize2, Maximize2, Flame, Compass, Plus, Sparkles } from "lucide-react";
 import { TarotLogo } from "./TarotLogo";
 import { useCategories } from "../context/CategoryContext";
 import { useVisualEditor } from "../context/VisualEditorContext";
@@ -12,6 +12,7 @@ import { LatestEventsPanel } from "./LatestEventsPanel";
 import { WorldMapsBanner } from "./WorldMapsBanner";
 import { EditableText } from "./webbuilder/EditableText";
 import { CategoryQuickEditModal } from "./webbuilder/CategoryQuickEditModal";
+import { AstralClockLogo } from "./AstralClockWatermark";
 
 export function Home() {
   const { isVisualEditMode } = useVisualEditor();
@@ -232,7 +233,89 @@ export function Home() {
         />
       )}
 
-      {/* Panel de Últimos Acontecimientos / Novedades de Campañas (Top Section) */}
+      {/* 1. Banner de Bienvenidos a la Dragopedia */}
+      <section className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card/95 to-secondary/35 p-6 sm:p-8 md:p-10 shadow-lg">
+        {/* Decorative background watermark with Astral Clock showing a little more than a quarter */}
+        <div 
+          className="absolute -right-24 -bottom-24 sm:-right-32 sm:-bottom-32 md:-right-40 md:-bottom-40 pointer-events-none select-none text-muted-foreground/15 dark:text-primary/[0.10]"
+          aria-hidden="true"
+        >
+          <AstralClockLogo
+            className="w-72 h-72 sm:w-96 sm:h-96 md:w-[480px] md:h-[480px]"
+          />
+        </div>
+
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/25 text-primary text-xs font-semibold tracking-wider uppercase font-heading">
+            <Flame className="h-3.5 w-3.5" />
+            <span>Enciclopedia Oficial de Caldo de Dragón</span>
+          </div>
+
+          <EditableText
+            textKey="home.hero.title"
+            defaultValue="Bienvenidos a la Dragopedia"
+            as="h1"
+            label="Título de Bienvenida"
+            className="font-heading text-2xl sm:text-3xl md:text-4xl font-extrabold text-foreground tracking-wide"
+          />
+
+          <EditableText
+            textKey="home.hero.subtitle"
+            defaultValue="La enciclopedia definitiva del universo de Caldo de Dragón. Explora deidades primordiales, héroes de leyenda, dragones mitológicos, órdenes sagradas y reliquias arcanas del Mundo."
+            as="p"
+            label="Subtítulo de Bienvenida"
+            className="text-sm sm:text-base text-muted-foreground leading-relaxed font-light max-w-2xl"
+          />
+
+          {/* Badges / Stats & Quick Action buttons */}
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-secondary/60 border border-border/60 text-xs font-medium text-foreground/90 backdrop-blur-sm shadow-xs">
+              <FileText className="h-4 w-4 text-primary" />
+              <span className="font-mono font-bold text-foreground">{allArticlesList.length}</span>
+              <EditableText
+                textKey="home.hero.articlesSuffix"
+                defaultValue="artículos"
+                label="Texto Artículos"
+                className="text-muted-foreground"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-secondary/60 border border-border/60 text-xs font-medium text-foreground/90 backdrop-blur-sm shadow-xs">
+              <TarotLogo className="h-4 w-4 text-primary" />
+              <span className="font-mono font-bold text-foreground">{mergedCategories.length}</span>
+              <EditableText
+                textKey="home.hero.categoriesSuffix"
+                defaultValue="categorías"
+                label="Texto Categorías"
+                className="text-muted-foreground"
+              />
+            </div>
+
+            <div className="h-4 w-[1px] bg-border/60 hidden sm:block mx-1" />
+
+            <Link
+              to="/nuevo"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-md transition-all hover:scale-[1.02] cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Nuevo artículo</span>
+            </Link>
+
+            <Link
+              to="/mundo"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-secondary/80 hover:bg-secondary border border-border/70 text-foreground text-xs font-semibold transition-all hover:scale-[1.02] cursor-pointer"
+            >
+              <Compass className="h-3.5 w-3.5 text-primary" />
+              <span>Explorar Mundo 3D</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. Banner de los Mapas */}
+      <WorldMapsBanner />
+
+      {/* 3. Panel de Últimos Acontecimientos / Novedades de Campañas */}
       <LatestEventsPanel articles={allArticlesList} />
 
       {/* Explore by Category */}
@@ -402,9 +485,6 @@ export function Home() {
           </div>
         )}
       </section>
-
-      {/* Banner Interactivo de Cartografía y Mapas */}
-      <WorldMapsBanner />
 
       {/* Featured Articles */}
       {featuredArticles.length > 0 && (

@@ -25,7 +25,7 @@ export const DEFAULT_SITE_UI: Record<string, string> = {
   "nav.footer.subtitle": "Enciclopedia del universo de Caldo de Dragón.",
 
   // Home Hero & Sections
-  "home.hero.title": "Libro de Tarot",
+  "home.hero.title": "Bienvenidos a la Dragopedia",
   "home.hero.subtitle": "La enciclopedia definitiva del universo de Caldo de Dragón. Explora deidades primordiales, héroes de leyenda, dragones mitológicos, órdenes sagradas y reliquias arcanas del Mundo.",
   "home.hero.articlesSuffix": "artículos",
   "home.hero.categoriesSuffix": "categorías",

@@ -18,7 +18,6 @@ import { EditableText } from "./webbuilder/EditableText";
 import { CategoryQuickEditModal } from "./webbuilder/CategoryQuickEditModal";
 import { useUIContent } from "../context/UIContentContext";
 import { SelectionSearchTooltip } from "./SelectionSearchTooltip";
-import { WikiContextMenu } from "./WikiContextMenu";
 
 // Standard hardcoded categories with metadata
 export const CATEGORY_INFO = [
@@ -645,8 +644,6 @@ export function Layout({ children }: LayoutProps) {
         {/* Global Tarot AI Chatbot Widget */}
         <TarotChatbot />
 
-        {/* Global Custom Wiki Context Menu (Right Click) */}
-        <WikiContextMenu />
 
         {/* Global Ambient Fantasy Radio */}
         <ScribeRadio />

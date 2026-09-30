@@ -6,6 +6,8 @@ import { ArticleCard } from "./ArticleCard";
 import { Search, ArrowLeft, BookOpen } from "lucide-react";
 import { useCategories } from "../context/CategoryContext";
 import { syncFetch, getCachedArticles } from "../utils/syncArticles";
+import { PersonajesSilhouettesBanner } from "./PersonajesSilhouettesBanner";
+import { LugaresSilhouettesBanner } from "./LugaresSilhouettesBanner";
 
 export function CategoryView() {
   const { slug } = useParams<{ slug: string }>();
@@ -13,6 +15,9 @@ export function CategoryView() {
   const currentCategory = mergedCategories.find((c) => c.slug === slug);
   const Icon = currentCategory ? currentCategory.icon : BookOpen;
   const themeColor = currentCategory ? currentCategory.color : "#a0a0a0";
+  const isPersonajes = currentCategory?.slug === "personajes" || currentCategory?.name?.toLowerCase() === "personajes" || slug?.toLowerCase() === "personajes";
+  const isLugares = currentCategory?.slug === "lugares" || currentCategory?.slug === "lugar" || currentCategory?.name?.toLowerCase() === "lugares" || currentCategory?.name?.toLowerCase() === "lugar" || slug?.toLowerCase() === "lugares" || slug?.toLowerCase() === "lugar";
+  const hasCustomBanner = isPersonajes || isLugares;
 
   const [articles, setArticles] = useState<WikiArticle[]>(() => {
     const cached = getCachedArticles();
@@ -146,30 +151,13 @@ export function CategoryView() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      {/* Back button & Breadcrumbs */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Link to="/" className="hover:text-foreground transition-colors">Inicio</Link>
-        <span>/</span>
-        <span className="text-foreground font-medium">{currentCategory?.name || "Categoría"}</span>
-      </div>
-
-      {/* Category Header Banner */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pb-6 border-b border-border/60">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div 
-              className="h-10 w-10 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: `${themeColor}15`, border: `1px solid ${themeColor}30` }}
-            >
-              <Icon className="h-5 w-5" style={{ color: themeColor }} />
-            </div>
-            <h1 className="font-heading text-xl lg:text-3xl font-bold text-foreground tracking-wide">
-              {currentCategory?.name || "Categoría"}
-            </h1>
-          </div>
-          <p className="text-xs lg:text-sm text-muted-foreground max-w-xl font-light">
-            {currentCategory?.desc || "Explora las descripciones, documentos y datos históricos agrupados en esta categoría de lore."}
-          </p>
+      {/* Top Bar: Breadcrumbs on Left, Search filter on Right */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Back button & Breadcrumbs */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Link to="/" className="hover:text-foreground transition-colors">Inicio</Link>
+          <span>/</span>
+          <span className="text-foreground font-medium">{currentCategory?.name || "Categoría"}</span>
         </div>
 
         {/* Search inside Category */}
@@ -183,6 +171,54 @@ export function CategoryView() {
             className="w-full h-8 pl-9 pr-3 text-xs bg-secondary/70 border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/45 transition-all"
           />
         </div>
+      </div>
+
+      {/* Category Header Banner */}
+      <div className="space-y-4 pb-6 border-b border-border/60">
+        {/* Silhouette decoration specifically for Personajes */}
+        {isPersonajes && (
+          <div className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-b from-secondary/30 via-card/50 to-card border border-border/40 p-2 sm:p-4 shadow-sm flex items-end justify-center">
+            {/* Vignette gradients on left and right for seamless blending */}
+            <div className="absolute inset-y-0 left-0 w-12 sm:w-20 bg-gradient-to-r from-card to-transparent pointer-events-none z-10" />
+            <div className="absolute inset-y-0 right-0 w-12 sm:w-20 bg-gradient-to-l from-card to-transparent pointer-events-none z-10" />
+            
+            {/* 100% Faithful Solid Silhouettes in color #232e33 */}
+            <PersonajesSilhouettesBanner
+              className="w-full h-28 sm:h-36 md:h-44"
+              color="#232e33"
+            />
+          </div>
+        )}
+
+        {/* Silhouette decoration specifically for Lugares (Carroza con caballo y conductor) */}
+        {isLugares && (
+          <div className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-b from-secondary/30 via-card/50 to-card border border-border/40 p-2 sm:p-4 shadow-sm flex items-end justify-center">
+            {/* Vignette gradients on left and right for seamless blending */}
+            <div className="absolute inset-y-0 left-0 w-12 sm:w-20 bg-gradient-to-r from-card to-transparent pointer-events-none z-10" />
+            <div className="absolute inset-y-0 right-0 w-12 sm:w-20 bg-gradient-to-l from-card to-transparent pointer-events-none z-10" />
+            
+            {/* Carroza medieval con caballo y conductor en color #232e33 */}
+            <LugaresSilhouettesBanner
+              className="w-full h-28 sm:h-36 md:h-44"
+              color="#232e33"
+            />
+          </div>
+        )}
+
+        {/* Title for other categories */}
+        {!hasCustomBanner && (
+          <div className="flex items-center gap-3">
+            <div 
+              className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm"
+              style={{ backgroundColor: `${themeColor}15`, border: `1px solid ${themeColor}30` }}
+            >
+              <Icon className="h-5 w-5" style={{ color: themeColor }} />
+            </div>
+            <h1 className="font-heading text-xl lg:text-3xl font-bold text-foreground tracking-wide">
+              {currentCategory?.name || "Categoría"}
+            </h1>
+          </div>
+        )}
       </div>
 
       {/* Dropdown Filters (Desplegables) */}
