@@ -109,7 +109,7 @@ export function setGlobalMergedCategories(categories: MergedCategory[]) {
   globalMergedCategories = categories;
 }
 
-export function mergeCategories(customCategories: WikiCategory[]): MergedCategory[] {
+export function mergeCategories(customCategories: WikiCategory[], categoryOrder?: string[]): MergedCategory[] {
   const merged: MergedCategory[] = [...BASE_CATEGORIES];
   
   customCategories.forEach((custom) => {
@@ -157,6 +157,35 @@ export function mergeCategories(customCategories: WikiCategory[]): MergedCategor
       });
     }
   });
+
+  // Si hay un orden definido (por id, slug o nombre), ordenar merged de acuerdo a ese orden
+  // Permite libre ordenación total entre categorías personalizadas y fijas
+  if (Array.isArray(categoryOrder) && categoryOrder.length > 0) {
+    const orderMap: Record<string, number> = {};
+    categoryOrder.forEach((identifier, index) => {
+      if (identifier && typeof identifier === "string") {
+        orderMap[identifier.toLowerCase().trim()] = index;
+      }
+    });
+
+    const getRank = (cat: MergedCategory, defaultIdx: number): number => {
+      const id = (cat.id || "").toLowerCase().trim();
+      const slug = (cat.slug || "").toLowerCase().trim();
+      const name = (cat.name || "").toLowerCase().trim();
+      const catSlug = slug ? `cat-${slug}` : "";
+
+      if (id && id in orderMap) return orderMap[id];
+      if (slug && slug in orderMap) return orderMap[slug];
+      if (catSlug && catSlug in orderMap) return orderMap[catSlug];
+      if (name && name in orderMap) return orderMap[name];
+
+      return 10000 + defaultIdx;
+    };
+
+    const indexed = merged.map((cat, idx) => ({ cat, rank: getRank(cat, idx) }));
+    indexed.sort((a, b) => a.rank - b.rank);
+    return indexed.map(item => item.cat);
+  }
   
   return merged;
 }

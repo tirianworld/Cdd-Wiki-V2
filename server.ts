@@ -1425,36 +1425,47 @@ async function readCategories(): Promise<WikiCategory[]> {
   }
 
   const backupPath = path.join(process.cwd(), "src", "data", "categories.json");
-  let categories: WikiCategory[] = [];
+  const publicPath = path.join(process.cwd(), "public", "data", "categories.json");
+  let localCategories: WikiCategory[] = [];
 
-  // 1. Intentar cargar desde GitHub si hay token
-  if (GITHUB_TOKEN) {
-    const githubCategories = await readFromGitHub<WikiCategory[]>(GITHUB_CATEGORIES_PATH);
-    if (githubCategories && Array.isArray(githubCategories)) {
-      console.log(`[GitHub Sync] Cargadas ${githubCategories.length} categorías exitosamente desde GitHub.`);
-      categories = githubCategories;
-      
-      // Guardar localmente como backup para futuras caídas o arranques rápidos
-      try {
-        fs.writeFileSync(backupPath, JSON.stringify(categories, null, 2), "utf8");
-      } catch (saveErr) {
-        console.error("[Local Backup] No se pudo escribir local categories.json:", saveErr);
+  // Leer categorías locales existentes (de src o public)
+  try {
+    const targetFile = fs.existsSync(backupPath) ? backupPath : (fs.existsSync(publicPath) ? publicPath : null);
+    if (targetFile) {
+      const localData = JSON.parse(fs.readFileSync(targetFile, "utf8"));
+      if (Array.isArray(localData) && localData.length > 0) {
+        localCategories = localData;
       }
     }
+  } catch (localErr) {
+    console.error("[Local Database] Error al leer categories.json local:", localErr);
   }
 
-  // 2. Si no pudimos cargar de GitHub o no hay token, cargar de categories.json local
-  if (categories.length === 0) {
+  let categories: WikiCategory[] = [...localCategories];
+
+  // 1. Intentar cargar desde GitHub si hay token y fusionar con las locales
+  if (GITHUB_TOKEN) {
     try {
-      if (fs.existsSync(backupPath)) {
-        console.warn("[Local Database] Cargando categorías desde base de datos local temporal (categories.json)...");
-        const localData = JSON.parse(fs.readFileSync(backupPath, "utf8"));
-        if (Array.isArray(localData) && localData.length > 0) {
-          categories = localData;
+      const githubCategories = await readFromGitHub<WikiCategory[]>(GITHUB_CATEGORIES_PATH);
+      if (githubCategories && Array.isArray(githubCategories) && githubCategories.length > 0) {
+        console.log(`[GitHub Sync] Leídas ${githubCategories.length} categorías desde GitHub.`);
+        // Combinar preservando tanto las de GitHub como las locales personalizadas
+        const catMap = new Map<string, WikiCategory>();
+        for (const cat of githubCategories) {
+          if (cat && (cat.id || cat.slug)) {
+            catMap.set(cat.id || cat.slug, cat);
+          }
         }
+        for (const cat of localCategories) {
+          if (cat && (cat.id || cat.slug)) {
+            // Local tiene prioridad para preservar ediciones y categorías creadas localmente
+            catMap.set(cat.id || cat.slug, cat);
+          }
+        }
+        categories = Array.from(catMap.values());
       }
-    } catch (localErr) {
-      console.error("[Local Database] Error al leer categories.json local:", localErr);
+    } catch (ghErr) {
+      console.warn("[GitHub Sync] Error al intentar leer categorías de GitHub:", ghErr);
     }
   }
 
@@ -1546,6 +1557,11 @@ async function writeCategories(categories: WikiCategory[]): Promise<void> {
   try {
     fs.writeFileSync(backupPath, JSON.stringify(categories, null, 2), "utf8");
     console.log(`[Local Backup] Local categories.json updated with ${categories.length} categories during write.`);
+    
+    const publicBackupPath = path.join(process.cwd(), "public", "data", "categories.json");
+    if (fs.existsSync(path.dirname(publicBackupPath))) {
+      fs.writeFileSync(publicBackupPath, JSON.stringify(categories, null, 2), "utf8");
+    }
   } catch (saveErr) {
     console.error("[Local Backup] Failed to write local categories backup during write:", saveErr);
   }
@@ -3983,6 +3999,52 @@ app.delete("/api/categories/:id", async (req: Request, res: Response) => {
   const filtered = categories.filter((c) => c.id !== req.params.id);
   await writeCategories(filtered);
   res.json({ success: true });
+});
+
+// 8c. Get category order
+app.get("/api/category-order", async (req: Request, res: Response) => {
+  try {
+    const orderPath = path.join(process.cwd(), "src", "data", "category_order.json");
+    if (fs.existsSync(orderPath)) {
+      const data = JSON.parse(fs.readFileSync(orderPath, "utf8"));
+      if (Array.isArray(data)) {
+        return res.json(data);
+      }
+    }
+    return res.json([]);
+  } catch (err: any) {
+    console.error("Error reading category order:", err);
+    res.json([]);
+  }
+});
+
+// 8d. Update category order
+app.put("/api/category-order", async (req: Request, res: Response) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order)) {
+      return res.status(400).json({ error: "El orden debe ser un arreglo de identificadores." });
+    }
+    const orderPath = path.join(process.cwd(), "src", "data", "category_order.json");
+    fs.writeFileSync(orderPath, JSON.stringify(order, null, 2), "utf8");
+
+    try {
+      const publicOrderPath = path.join(process.cwd(), "public", "data", "category_order.json");
+      fs.writeFileSync(publicOrderPath, JSON.stringify(order, null, 2), "utf8");
+    } catch (pubErr) {
+      console.warn("Could not write public/data/category_order.json:", pubErr);
+    }
+
+    // Guardar en GitHub si hay token configurado
+    if (GITHUB_TOKEN) {
+      writeToGitHub("src/data/category_order.json", JSON.stringify(order, null, 2), "Actualizar orden de categorías").catch(console.error);
+    }
+
+    res.json({ success: true, order });
+  } catch (err: any) {
+    console.error("Error saving category order:", err);
+    res.status(500).json({ error: "Error al guardar el orden de categorías." });
+  }
 });
 
 // 8b. Predict taxonomic filters (AI auto-evaluation with real-time learning)

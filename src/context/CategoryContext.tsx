@@ -1,27 +1,45 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { WikiCategory } from "../types";
-import { MergedCategory, mergeCategories, setGlobalMergedCategories } from "../utils/categoryHelper";
+import { MergedCategory, mergeCategories, setGlobalMergedCategories, BASE_CATEGORIES } from "../utils/categoryHelper";
+import defaultCategoriesData from "../data/categories.json";
 
 interface CategoryContextType {
   customCategories: WikiCategory[];
   mergedCategories: MergedCategory[];
+  categoryOrder: string[];
   loading: boolean;
   error: string | null;
   refreshCategories: () => Promise<void>;
   addCategory: (name: string, description: string, color?: string, icon?: string) => Promise<WikiCategory>;
   updateCategory: (id: string, name: string, description: string, color?: string, icon?: string) => Promise<WikiCategory>;
   deleteCategory: (id: string) => Promise<void>;
+  reorderCategories: (newOrder: string[]) => Promise<void>;
+  moveCategory: (id: string, direction: "up" | "down" | "top" | "bottom") => Promise<void>;
+  moveCategoryToPosition: (id: string, targetIndex: number) => Promise<void>;
+  resetCategoryOrder: () => Promise<void>;
   reassignCategory: (categoryId: string) => Promise<{ id: string; title: string; oldCategory: string; newCategory: string }[]>;
   confirmReassign: (reassignments: { id: string; newCategory: string }[]) => Promise<number>;
 }
 
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
 
-import defaultCategoriesData from "../data/categories.json";
+const LOCAL_STORAGE_ORDER_KEY = "caldo_dragopedia_category_order";
 
 export function CategoryProvider({ children }: { children: React.ReactNode }) {
   const [customCategories, setCustomCategories] = useState<WikiCategory[]>(() => {
     return Array.isArray(defaultCategoriesData) ? (defaultCategoriesData as unknown as WikiCategory[]) : [];
+  });
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_ORDER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return [];
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +71,28 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshCategoryOrder = async () => {
+    try {
+      const res = await fetch("/api/category-order");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setCategoryOrder(data);
+          try {
+            localStorage.setItem(LOCAL_STORAGE_ORDER_KEY, JSON.stringify(data));
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore network errors, localStorage fallback is used
+    }
+  };
+
   useEffect(() => {
     refreshCategories();
+    refreshCategoryOrder();
   }, []);
 
   const addCategory = async (name: string, description: string, color?: string, icon?: string) => {
@@ -151,6 +189,76 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const reorderCategories = async (newOrder: string[]) => {
+    setCategoryOrder(newOrder);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_ORDER_KEY, JSON.stringify(newOrder));
+    } catch (e) {
+      // ignore
+    }
+
+    try {
+      await fetch("/api/category-order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: newOrder })
+      });
+    } catch (err) {
+      console.error("Error saving category order to server:", err);
+    }
+  };
+
+  const moveCategory = async (id: string, direction: "up" | "down" | "top" | "bottom") => {
+    const currentList = mergeCategories(customCategories, categoryOrder);
+    const index = currentList.findIndex(c => 
+      c.id === id || 
+      c.slug === id || 
+      c.name.toLowerCase() === id.toLowerCase() ||
+      (c.slug && `cat-${c.slug}` === id)
+    );
+    if (index === -1) return;
+
+    let targetIndex = index;
+    if (direction === "up") targetIndex = index - 1;
+    else if (direction === "down") targetIndex = index + 1;
+    else if (direction === "top") targetIndex = 0;
+    else if (direction === "bottom") targetIndex = currentList.length - 1;
+
+    if (targetIndex < 0 || targetIndex >= currentList.length || targetIndex === index) return;
+
+    const reordered = [...currentList];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    const newOrderIds = reordered.map(c => c.id || c.slug);
+    await reorderCategories(newOrderIds);
+  };
+
+  const moveCategoryToPosition = async (id: string, targetIndex: number) => {
+    const currentList = mergeCategories(customCategories, categoryOrder);
+    const index = currentList.findIndex(c => 
+      c.id === id || 
+      c.slug === id || 
+      c.name.toLowerCase() === id.toLowerCase() ||
+      (c.slug && `cat-${c.slug}` === id)
+    );
+    if (index === -1) return;
+    if (targetIndex < 0 || targetIndex >= currentList.length || targetIndex === index) return;
+
+    const reordered = [...currentList];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    const newOrderIds = reordered.map(c => c.id || c.slug);
+    await reorderCategories(newOrderIds);
+  };
+
+  const resetCategoryOrder = async () => {
+    const defaultList = mergeCategories(customCategories, []);
+    const defaultIds = defaultList.map(c => c.id || c.slug);
+    await reorderCategories(defaultIds);
+  };
+
   const reassignCategory = async (categoryId: string) => {
     try {
       const res = await fetch("/api/ai/reassign-category", {
@@ -193,7 +301,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const mergedCategories = mergeCategories(customCategories);
+  const mergedCategories = mergeCategories(customCategories, categoryOrder);
 
   useEffect(() => {
     setGlobalMergedCategories(mergedCategories);
@@ -204,12 +312,17 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
       value={{
         customCategories,
         mergedCategories,
+        categoryOrder,
         loading,
         error,
         refreshCategories,
         addCategory,
         updateCategory,
         deleteCategory,
+        reorderCategories,
+        moveCategory,
+        moveCategoryToPosition,
+        resetCategoryOrder,
         reassignCategory,
         confirmReassign
       }}

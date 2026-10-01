@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { WikiArticle, WikiCategory } from "../types";
 import { getCategoryIcon } from "./Layout";
 import { ArticleCard } from "./ArticleCard";
-import { Library, FileText, FolderSync, Edit3, ChevronUp, ChevronDown, Minimize2, Maximize2, Flame, Compass, Plus, Sparkles } from "lucide-react";
+import { Library, FileText, FolderSync, Edit3, ChevronUp, ChevronDown, Minimize2, Maximize2, Flame, Compass, Plus, Sparkles, SlidersHorizontal } from "lucide-react";
 import { TarotLogo } from "./TarotLogo";
 import { useCategories } from "../context/CategoryContext";
 import { useVisualEditor } from "../context/VisualEditorContext";
@@ -12,11 +12,13 @@ import { LatestEventsPanel } from "./LatestEventsPanel";
 import { WorldMapsBanner } from "./WorldMapsBanner";
 import { EditableText } from "./webbuilder/EditableText";
 import { CategoryQuickEditModal } from "./webbuilder/CategoryQuickEditModal";
+import { CategoryReorderModal } from "./CategoryReorderModal";
 import { AstralClockLogo } from "./AstralClockWatermark";
 
 export function Home() {
   const { isVisualEditMode } = useVisualEditor();
   const [editingCategory, setEditingCategory] = useState<any | null>(null);
+  const [showReorderModal, setShowReorderModal] = useState(false);
 
   const [allArticlesList, setAllArticlesList] = useState<WikiArticle[]>(() => {
     const cached = getCachedArticles();
@@ -233,6 +235,12 @@ export function Home() {
         />
       )}
 
+      {/* Global Category Reorder Modal */}
+      <CategoryReorderModal
+        isOpen={showReorderModal}
+        onClose={() => setShowReorderModal(false)}
+      />
+
       {/* 1. Banner de Bienvenidos a la Dragopedia */}
       <section className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card/95 to-secondary/35 p-6 sm:p-8 md:p-10 shadow-lg">
         {/* Decorative background watermark with Astral Clock showing a little more than a quarter */}
@@ -336,6 +344,17 @@ export function Home() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Reorder categories button */}
+            <button
+              type="button"
+              onClick={() => setShowReorderModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-border/60 bg-secondary/40 hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors"
+              title="Reordenar categorías cósmicas (personalizadas y fijas)"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
+              <span className="hidden sm:inline font-medium">Reordenar</span>
+            </button>
+
             {/* Toggle minimize button */}
             <button
               type="button"

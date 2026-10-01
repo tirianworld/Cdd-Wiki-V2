@@ -16,6 +16,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { useVisualEditor } from "../context/VisualEditorContext";
 import { EditableText } from "./webbuilder/EditableText";
 import { CategoryQuickEditModal } from "./webbuilder/CategoryQuickEditModal";
+import { CategoryReorderModal } from "./CategoryReorderModal";
 import { useUIContent } from "../context/UIContentContext";
 import { SelectionSearchTooltip } from "./SelectionSearchTooltip";
 
@@ -66,6 +67,7 @@ export function Layout({ children }: LayoutProps) {
   const { getText } = useUIContent();
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any | null>(null);
+  const [showReorderModal, setShowReorderModal] = useState(false);
 
   // Collapsible sidebar sections state
   const [homeCollapsed, setHomeCollapsed] = useState<boolean>(() => {
@@ -154,6 +156,12 @@ export function Layout({ children }: LayoutProps) {
           onClose={() => setEditingCategory(null)}
         />
       )}
+
+      {/* Global Category Reorder Modal (Drag & Drop + Arrows + Positioning) */}
+      <CategoryReorderModal
+        isOpen={showReorderModal}
+        onClose={() => setShowReorderModal(false)}
+      />
 
       {/* Top sticky header */}
       <header className="sticky top-0 z-50 border-b border-border bg-card/90 backdrop-blur-md">
@@ -527,22 +535,36 @@ export function Layout({ children }: LayoutProps) {
                   </Link>
 
                   {isVisualEditMode && (
-                    <Link
-                      to="/filtros"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                        location.pathname === "/filtros" 
-                          ? "bg-primary/10 text-primary border border-primary/15" 
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
-                      }`}
-                    >
-                      <SlidersHorizontal className="h-4 w-4 shrink-0" />
-                      <EditableText
-                        textKey="nav.menu.filtros"
-                        defaultValue={t("Gestión de Filtros")}
-                        label="Menú Gestión de Filtros"
-                      />
-                    </Link>
+                    <>
+                      <Link
+                        to="/filtros"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                          location.pathname === "/filtros" 
+                            ? "bg-primary/10 text-primary border border-primary/15" 
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                        }`}
+                      >
+                        <SlidersHorizontal className="h-4 w-4 shrink-0" />
+                        <EditableText
+                          textKey="nav.menu.filtros"
+                          defaultValue={t("Gestión de Filtros")}
+                          label="Menú Gestión de Filtros"
+                        />
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          setShowReorderModal(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors text-left"
+                      >
+                        <SlidersHorizontal className="h-4 w-4 shrink-0 text-accent" />
+                        <span>Reordenar Categorías</span>
+                      </button>
+                    </>
                   )}
                 </div>
               )}
@@ -563,17 +585,30 @@ export function Layout({ children }: LayoutProps) {
                   label="Encabezado Categorías"
                   className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors"
                 />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCategoriesCollapsed(prev => !prev);
-                  }}
-                  title={categoriesCollapsed ? "Expandir categorías de lore" : "Minimizar categorías de lore"}
-                  className="p-0.5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-secondary/60 transition-colors"
-                >
-                  <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${categoriesCollapsed ? "-rotate-90" : "rotate-0"}`} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowReorderModal(true);
+                    }}
+                    title="Reordenar categorías (personalizadas y fijas)"
+                    className="p-1 rounded text-muted-foreground/60 hover:text-primary hover:bg-secondary/70 transition-colors"
+                  >
+                    <SlidersHorizontal className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCategoriesCollapsed(prev => !prev);
+                    }}
+                    title={categoriesCollapsed ? "Expandir categorías de lore" : "Minimizar categorías de lore"}
+                    className="p-0.5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-secondary/60 transition-colors"
+                  >
+                    <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${categoriesCollapsed ? "-rotate-90" : "rotate-0"}`} />
+                  </button>
+                </div>
               </div>
               
               {!categoriesCollapsed && (

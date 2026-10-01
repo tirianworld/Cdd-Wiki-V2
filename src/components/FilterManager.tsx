@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { 
   Loader2, Plus, Trash2, Calendar, Globe, Layers, Skull, PawPrint,
   ChevronRight, Info, BookOpen, Wand2, RefreshCw, AlertCircle, CheckCircle2, Edit3, GitFork,
-  Heart, Users, Crown, ExternalLink, StopCircle, Lock, Sparkles
+  Heart, Users, Crown, ExternalLink, StopCircle, Lock, Sparkles,
+  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, GripVertical, RotateCcw
 } from "lucide-react";
 import { TarotLogo } from "./TarotLogo";
 import { SyncEntitiesTool } from "./SyncEntitiesTool";
@@ -34,7 +35,22 @@ export function FilterManager() {
   });
   const [message, setMessage] = useState("");
 
-  const { mergedCategories, addCategory, updateCategory, deleteCategory, reassignCategory, confirmReassign } = useCategories();
+  const { 
+    mergedCategories, 
+    addCategory, 
+    updateCategory, 
+    deleteCategory, 
+    reorderCategories, 
+    moveCategory, 
+    moveCategoryToPosition,
+    resetCategoryOrder, 
+    reassignCategory, 
+    confirmReassign 
+  } = useCategories();
+
+  // Drag and drop state for categories
+  const [draggedCatId, setDraggedCatId] = useState<string | null>(null);
+  const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
 
   // Custom Category form state
   const [catName, setCatName] = useState("");
@@ -1354,39 +1370,175 @@ export function FilterManager() {
 
           {/* Categories list (Right column) */}
           <div className="lg:col-span-7 space-y-4">
-            <h3 className="font-heading font-semibold text-xs uppercase tracking-wider text-muted-foreground">
-              Sellos de Categorías Activas ({mergedCategories.length})
-            </h3>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h3 className="font-heading font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <span>Sellos de Categorías Activas ({mergedCategories.length})</span>
+                </h3>
+                <p className="text-[10px] text-muted-foreground/75 font-normal mt-0.5">
+                  Arrastra cualquier categoría o usa las flechas para fijar su orden cósmico (personalizadas y fijas).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetCategoryOrder}
+                className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-2.5 py-1 rounded bg-secondary/60 hover:bg-secondary border border-border/50 transition-colors"
+                title="Restablecer el orden cósmico predeterminado"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Restablecer orden</span>
+              </button>
+            </div>
 
-            <div className="space-y-3 max-h-[380px] overflow-y-auto border border-border/40 bg-secondary/10 rounded-xl p-4">
-              {mergedCategories.map((cat) => {
+            <div className="space-y-2.5 max-h-[440px] overflow-y-auto border border-border/40 bg-secondary/10 rounded-xl p-3.5">
+              {mergedCategories.map((cat, idx) => {
                 const isDynamic = cat.isCustom;
+                const isFirst = idx === 0;
+                const isLast = idx === mergedCategories.length - 1;
+                const isDragging = draggedCatId === cat.id;
+                const isDragOver = dragOverCatId === cat.id && draggedCatId !== cat.id;
+
                 return (
                   <div 
                     key={cat.id} 
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card border border-border/40 p-3.5 rounded-lg hover:border-primary/30 transition-all"
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedCatId(cat.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (dragOverCatId !== cat.id) {
+                        setDragOverCatId(cat.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverCatId === cat.id) {
+                        setDragOverCatId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedCatId && draggedCatId !== cat.id) {
+                        const fromIdx = mergedCategories.findIndex(c => c.id === draggedCatId || c.slug === draggedCatId);
+                        const toIdx = mergedCategories.findIndex(c => c.id === cat.id || c.slug === cat.id);
+                        if (fromIdx !== -1 && toIdx !== -1) {
+                          const currentIds = mergedCategories.map(c => c.id || c.slug);
+                          const newIds = [...currentIds];
+                          const [removed] = newIds.splice(fromIdx, 1);
+                          newIds.splice(toIdx, 0, removed);
+                          reorderCategories(newIds);
+                        }
+                      }
+                      setDraggedCatId(null);
+                      setDragOverCatId(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedCatId(null);
+                      setDragOverCatId(null);
+                    }}
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card border p-3 rounded-lg transition-all ${
+                      isDragging 
+                        ? "opacity-35 border-dashed border-primary" 
+                        : isDragOver
+                        ? "border-primary bg-primary/10 shadow-lg -translate-y-0.5"
+                        : "border-border/40 hover:border-primary/40 hover:bg-card/90"
+                    }`}
                   >
-                    <div className="flex gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Reorder controls: Drag handle and Top/Up/Down/Bottom arrows */}
+                      <div className="flex items-center gap-1 shrink-0 bg-secondary/80 rounded-md p-1 border border-border/50">
+                        <div 
+                          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-0.5"
+                          title="Arrastra para reordenar"
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCategory(cat.id, "top");
+                            }}
+                            disabled={isFirst}
+                            className="h-3 w-3 flex items-center justify-center text-muted-foreground hover:text-primary disabled:opacity-20 disabled:hover:text-muted-foreground transition-colors"
+                            title="Mover al primer lugar absoluto"
+                          >
+                            <ChevronsUp className="h-2.5 w-2.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCategory(cat.id, "up");
+                            }}
+                            disabled={isFirst}
+                            className="h-3 w-3 flex items-center justify-center text-muted-foreground hover:text-primary disabled:opacity-20 disabled:hover:text-muted-foreground transition-colors"
+                            title="Subir de posición"
+                          >
+                            <ChevronUp className="h-2.5 w-2.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCategory(cat.id, "down");
+                            }}
+                            disabled={isLast}
+                            className="h-3 w-3 flex items-center justify-center text-muted-foreground hover:text-primary disabled:opacity-20 disabled:hover:text-muted-foreground transition-colors"
+                            title="Bajar de posición"
+                          >
+                            <ChevronDown className="h-2.5 w-2.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCategory(cat.id, "bottom");
+                            }}
+                            disabled={isLast}
+                            className="h-3 w-3 flex items-center justify-center text-muted-foreground hover:text-primary disabled:opacity-20 disabled:hover:text-muted-foreground transition-colors"
+                            title="Mover al último lugar"
+                          >
+                            <ChevronsDown className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Numeric position badge */}
+                      <span className="text-[10px] font-mono text-muted-foreground font-semibold w-5 text-center shrink-0">
+                        #{idx + 1}
+                      </span>
+
+                      {/* Icon */}
                       <div className="h-9 w-9 rounded-lg flex items-center justify-center border shrink-0" style={{ backgroundColor: `${cat.color}15`, borderColor: `${cat.color}40` }}>
                         <cat.icon className="h-5 w-5" style={{ color: cat.color }} />
                       </div>
-                      <div>
+
+                      {/* Info & labels */}
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-foreground">{cat.name}</span>
-                          {isDynamic && (
-                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/20">
+                          <span className="text-xs font-bold text-foreground truncate">{cat.name}</span>
+                          {isDynamic ? (
+                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/20 shrink-0">
                               Personalizada
                             </span>
+                          ) : (
+                            <span className="text-[9px] font-medium uppercase px-1.5 py-0.5 rounded bg-secondary/80 text-muted-foreground border border-border/40 shrink-0">
+                              Fija
+                            </span>
                           )}
-                          <span className="text-[10px] font-mono text-muted-foreground/80">{cat.color}</span>
+                          <span className="text-[10px] font-mono text-muted-foreground/80 shrink-0">{cat.color}</span>
                         </div>
-                        <p className="text-[10.5px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed font-light">
+                        <p className="text-[10.5px] text-muted-foreground mt-0.5 line-clamp-1 leading-relaxed font-light">
                           {cat.description || "Categoría mística de la enciclopedia de Caldo de Dragón."}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 justify-end shrink-0">
+                    {/* Action buttons on the right */}
+                    <div className="flex items-center gap-1.5 justify-end shrink-0 self-end sm:self-center">
                       <button
                         onClick={() => handleReassign(cat.id, cat.name)}
                         disabled={reassigningId !== null}

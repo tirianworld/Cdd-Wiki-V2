@@ -50,5 +50,21 @@
     "color": "#d8b87d",
     "icon": "Coins",
     "id": "cat-1790333018734"
+  },
+  {
+    "name": "Primordiales",
+    "slug": "primordiales",
+    "description": "los distintos primordiales, seres nacidos de la magia que pueblan Ávalon",
+    "color": "#ffffff",
+    "icon": "Infinity",
+    "id": "cat-1790847010090"
+  },
+  {
+    "name": "Ascendidos",
+    "slug": "ascendidos",
+    "description": "Mortales, ya sean humanoides, animales, o incluso criaturas como dragones que ascendieron a un nivel quasidivino",
+    "color": "#a3486f",
+    "icon": "Feather",
+    "id": "cat-1790847168073"
   }
 ]

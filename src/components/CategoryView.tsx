@@ -8,6 +8,8 @@ import { useCategories } from "../context/CategoryContext";
 import { syncFetch, getCachedArticles } from "../utils/syncArticles";
 import { PersonajesSilhouettesBanner } from "./PersonajesSilhouettesBanner";
 import { LugaresSilhouettesBanner } from "./LugaresSilhouettesBanner";
+import { DragonesSilhouettesBanner } from "./DragonesSilhouettesBanner";
+import { PrimordialesSilhouettesBanner } from "./PrimordialesSilhouettesBanner";
 
 export function CategoryView() {
   const { slug } = useParams<{ slug: string }>();
@@ -17,7 +19,9 @@ export function CategoryView() {
   const themeColor = currentCategory ? currentCategory.color : "#a0a0a0";
   const isPersonajes = currentCategory?.slug === "personajes" || currentCategory?.name?.toLowerCase() === "personajes" || slug?.toLowerCase() === "personajes";
   const isLugares = currentCategory?.slug === "lugares" || currentCategory?.slug === "lugar" || currentCategory?.name?.toLowerCase() === "lugares" || currentCategory?.name?.toLowerCase() === "lugar" || slug?.toLowerCase() === "lugares" || slug?.toLowerCase() === "lugar";
-  const hasCustomBanner = isPersonajes || isLugares;
+  const isDragones = currentCategory?.slug === "dragones" || currentCategory?.slug === "dragon" || currentCategory?.name?.toLowerCase() === "dragones" || currentCategory?.name?.toLowerCase() === "dragón" || slug?.toLowerCase() === "dragones" || slug?.toLowerCase() === "dragon";
+  const isPrimordiales = currentCategory?.slug === "primordiales" || currentCategory?.slug === "primordial" || currentCategory?.name?.toLowerCase() === "primordiales" || currentCategory?.name?.toLowerCase() === "primordial" || slug?.toLowerCase() === "primordiales" || slug?.toLowerCase() === "primordial";
+  const hasCustomBanner = isPersonajes || isLugares || isDragones || isPrimordiales;
 
   const [articles, setArticles] = useState<WikiArticle[]>(() => {
     const cached = getCachedArticles();
@@ -205,20 +209,55 @@ export function CategoryView() {
           </div>
         )}
 
-        {/* Title for other categories */}
-        {!hasCustomBanner && (
-          <div className="flex items-center gap-3">
-            <div 
-              className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm"
-              style={{ backgroundColor: `${themeColor}15`, border: `1px solid ${themeColor}30` }}
-            >
-              <Icon className="h-5 w-5" style={{ color: themeColor }} />
-            </div>
+        {/* Silhouette decoration specifically for Dragones (Dragón blanco en tesoro vs héroes al combate) */}
+        {isDragones && (
+          <div className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-b from-secondary/30 via-card/50 to-card border border-border/40 p-0 shadow-sm flex items-end justify-center">
+            {/* Vignette gradients on left and right for seamless blending */}
+            <div className="absolute inset-y-0 left-0 w-16 sm:w-28 bg-gradient-to-r from-card to-transparent pointer-events-none z-10" />
+            <div className="absolute inset-y-0 right-0 w-16 sm:w-28 bg-gradient-to-l from-card to-transparent pointer-events-none z-10" />
+            
+            {/* Dragón blanco sobre tesoro escupiendo hielo vs héroes en color #232e33 */}
+            <DragonesSilhouettesBanner
+              className="w-full h-44 sm:h-56 md:h-64 lg:h-72"
+              color="#232e33"
+            />
+          </div>
+        )}
+
+        {/* Silhouette decoration specifically for Primordiales (Los 4 Primordiales con sus auras elementales) */}
+        {isPrimordiales && (
+          <div className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-b from-secondary/30 via-card/50 to-card border border-border/40 p-2 sm:p-4 shadow-sm flex items-end justify-center">
+            {/* Vignette gradients on left and right for seamless blending */}
+            <div className="absolute inset-y-0 left-0 w-12 sm:w-20 bg-gradient-to-r from-card to-transparent pointer-events-none z-10" />
+            <div className="absolute inset-y-0 right-0 w-12 sm:w-20 bg-gradient-to-l from-card to-transparent pointer-events-none z-10" />
+            
+            {/* Los 4 Primordiales por separado en el centro del banner con sus auras sutiles */}
+            <PrimordialesSilhouettesBanner
+              className="w-full h-32 sm:h-40 md:h-48"
+              color="#232e33"
+            />
+          </div>
+        )}
+
+        {/* Category Title & Description */}
+        <div className="flex items-center gap-3 pt-1">
+          <div 
+            className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 shadow-sm"
+            style={{ backgroundColor: `${themeColor}15`, border: `1px solid ${themeColor}30` }}
+          >
+            <Icon className="h-5 w-5" style={{ color: themeColor }} />
+          </div>
+          <div>
             <h1 className="font-heading text-xl lg:text-3xl font-bold text-foreground tracking-wide">
               {currentCategory?.name || "Categoría"}
             </h1>
+            {currentCategory?.description && (
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                {currentCategory.description}
+              </p>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Dropdown Filters (Desplegables) */}
