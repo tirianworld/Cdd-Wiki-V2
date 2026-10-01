@@ -1,0 +1,32 @@
+import React, { useState } from "react";
+
+interface DragonesSilhouettesBannerProps {
+  className?: string;
+  color?: string;
+}
+
+export function DragonesSilhouettesBanner({
+  className = "w-full h-44 sm:h-56 md:h-64 lg:h-72",
+  color = "#232e33",
+}: DragonesSilhouettesBannerProps) {
+  const [imgSrc, setImgSrc] = useState("/images/caldo_dragones_combate_solid.png");
+
+  return (
+    <div
+      className={`relative w-full overflow-hidden select-none flex items-end justify-center ${className}`}
+    >
+      {/* Ground Line neutral */}
+      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-border/80 to-transparent pointer-events-none z-30" />
+
+      {/* Dragon combat silhouette (sin aura) */}
+      <div className="relative z-10 flex items-end justify-center h-full max-w-5xl mx-auto px-4 pb-0">
+        <img
+          src={imgSrc}
+          alt="Silueta de Dragones y Combate de Caldo de Dragón"
+          className="w-auto h-full max-h-72 object-contain object-bottom select-none pointer-events-none transition-transform duration-300 group-hover:scale-[1.01] block"
+          onError={() => setImgSrc("/images/caldo_dragones_combate_solid.png")}
+        />
+      </div>
+    </div>
+  );
+}
