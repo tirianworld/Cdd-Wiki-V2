@@ -212,7 +212,7 @@ for (let i = 1; i <= 10; i++) {
 
 interface FirebaseInstance {
   index: number;
-  db: admin.firestore.Firestore;
+  db: any;
   projectId: string;
   name: string;
   cachedArticles: WikiArticle[] | null;
@@ -225,37 +225,96 @@ interface FirebaseInstance {
 const firebaseInstances: FirebaseInstance[] = [];
 
 // ---------------------------------------------------------------------------
-// GitHub database integration
+// GitHub database integration & sync configuration
 // ---------------------------------------------------------------------------
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO || "tirianworld/Cdd-Wiki-V2"; // Owner / Repo
-const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
+export interface GitHubRuntimeConfig {
+  token: string;
+  repo: string;
+  branch: string;
+  user?: string;
+}
 
-const GITHUB_ARTICLES_PATH = "src/data/articles.json";
-const GITHUB_CATEGORIES_PATH = "src/data/categories.json";
-const GITHUB_FILTER_CATEGORIES_PATH = "src/data/filter_categories.json";
-const GITHUB_TIMELINE_PATH = "src/data/timeline_markers.json";
-const LOCAL_TIMELINE_PATH = path.join(process.cwd(), "src", "data", "timeline_markers.json");
-const GITHUB_CAMPAIGN_EVENTS_PATH = "src/data/campaign_events.json";
-const LOCAL_CAMPAIGN_EVENTS_PATH = path.join(process.cwd(), "src", "data", "campaign_events.json");
-const GITHUB_SITE_UI_CONFIG_PATH = "src/data/site_ui_config.json";
-const LOCAL_SITE_UI_CONFIG_PATH = path.join(process.cwd(), "src", "data", "site_ui_config.json");
-const GITHUB_GENEALOGY_PATH = "src/data/genealogy_tree.json";
-const GITHUB_MAPS_PATH = "src/data/maps.json";
-const LOCAL_MAPS_PATH = path.join(process.cwd(), "src", "data", "maps.json");
+const GITHUB_CONFIG_FILE = path.join(process.cwd(), "data", "github_config.json");
 
-async function readFromGitHub<T>(repoPath: string): Promise<T | null> {
-  const url = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${repoPath}`;
+function loadGitHubConfig(): GitHubRuntimeConfig {
+  let token = process.env.GITHUB_TOKEN || "";
+  let repo = process.env.GITHUB_REPO || "tirianworld/Cdd-wiki-V3"; // Owner / Repo default V3
+  let branch = process.env.GITHUB_BRANCH || "main";
+  let user: string | undefined = undefined;
+
+  try {
+    if (fs.existsSync(GITHUB_CONFIG_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(GITHUB_CONFIG_FILE, "utf8"));
+      if (parsed.token && !process.env.GITHUB_TOKEN) token = parsed.token;
+      if (parsed.repo && !process.env.GITHUB_REPO) repo = parsed.repo;
+      if (parsed.branch && !process.env.GITHUB_BRANCH) branch = parsed.branch;
+      if (parsed.user) user = parsed.user;
+    }
+  } catch (e) {
+    console.warn("Could not load data/github_config.json:", e);
+  }
+
+  return { token, repo, branch, user };
+}
+
+let activeGitHubConfig: GitHubRuntimeConfig = loadGitHubConfig();
+
+export function getEffectiveGitHubConfig(): GitHubRuntimeConfig {
+  return activeGitHubConfig;
+}
+
+export function getEffectiveGitHubToken(req?: Request): string {
+  if (req) {
+    const headerToken = req.headers["x-github-token"];
+    if (typeof headerToken === "string" && headerToken.trim()) {
+      return headerToken.trim();
+    }
+  }
+  return activeGitHubConfig.token || process.env.GITHUB_TOKEN || "";
+}
+
+export function getEffectiveGitHubRepo(): string {
+  return activeGitHubConfig.repo || process.env.GITHUB_REPO || "tirianworld/Cdd-wiki-V3";
+}
+
+export function getEffectiveGitHubBranch(): string {
+  return activeGitHubConfig.branch || process.env.GITHUB_BRANCH || "main";
+}
+
+let GITHUB_TOKEN = activeGitHubConfig.token;
+let GITHUB_REPO = activeGitHubConfig.repo;
+let GITHUB_BRANCH = activeGitHubConfig.branch;
+
+// Primary GitHub data paths (Cdd-wiki-V3 uses public/data/ as root database store)
+const GITHUB_ARTICLES_PATH = "public/data/articles.json";
+const GITHUB_CATEGORIES_PATH = "public/data/categories.json";
+const GITHUB_FILTER_CATEGORIES_PATH = "public/data/filter_categories.json";
+const GITHUB_CATEGORY_ORDER_PATH = "public/data/category_order.json";
+const GITHUB_TIMELINE_PATH = "public/data/timeline_markers.json";
+const LOCAL_TIMELINE_PATH = path.join(process.cwd(), "public", "data", "timeline_markers.json");
+const GITHUB_CAMPAIGN_EVENTS_PATH = "public/data/campaign_events.json";
+const LOCAL_CAMPAIGN_EVENTS_PATH = path.join(process.cwd(), "public", "data", "campaign_events.json");
+const GITHUB_SITE_UI_CONFIG_PATH = "public/data/site_ui_config.json";
+const LOCAL_SITE_UI_CONFIG_PATH = path.join(process.cwd(), "public", "data", "site_ui_config.json");
+const GITHUB_GENEALOGY_PATH = "public/data/genealogy_tree.json";
+const GITHUB_MAPS_PATH = "public/data/maps.json";
+const LOCAL_MAPS_PATH = path.join(process.cwd(), "public", "data", "maps.json");
+
+async function readFromGitHub<T>(repoPath: string, tokenOverride?: string): Promise<T | null> {
+  const currentRepo = getEffectiveGitHubRepo();
+  const currentBranch = getEffectiveGitHubBranch();
+  const currentToken = tokenOverride || getEffectiveGitHubToken();
+  const url = `https://raw.githubusercontent.com/${currentRepo}/${currentBranch}/${repoPath}`;
   try {
     const headers: Record<string, string> = {
       "User-Agent": "Dragopedia-Server"
     };
-    if (GITHUB_TOKEN) {
-      headers["Authorization"] = `Bearer ${GITHUB_TOKEN}`;
+    if (currentToken) {
+      headers["Authorization"] = `Bearer ${currentToken}`;
     }
     const res = await fetch(url, {
       method: "GET",
-      signal: AbortSignal.timeout(3500),
+      signal: AbortSignal.timeout(4500),
       headers
     });
 
@@ -326,20 +385,34 @@ async function writeSiteUIConfig(config: Record<string, any>): Promise<boolean> 
 const GIT_SYNC_DIR = "/tmp/dragopedia-github-sync";
 let gitSyncQueue: Promise<boolean> = Promise.resolve(true);
 
-async function executeGitSync(repoPath: string, contentStr: string, commitMessage: string): Promise<boolean> {
-  const remoteUrl = `https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git`;
+async function executeGitSync(
+  repoPath: string, 
+  contentStr: string, 
+  commitMessage: string, 
+  tokenOverride?: string
+): Promise<boolean> {
+  const activeToken = tokenOverride || getEffectiveGitHubToken();
+  const activeRepo = getEffectiveGitHubRepo();
+  const activeBranch = getEffectiveGitHubBranch();
+
+  if (!activeToken) {
+    console.warn(`[Git Sync] No GitHub token available. Cannot push ${repoPath}.`);
+    return false;
+  }
+
+  const remoteUrl = `https://x-access-token:${activeToken}@github.com/${activeRepo}.git`;
 
   // 1. Prepare repository directory
   if (!fs.existsSync(path.join(GIT_SYNC_DIR, ".git"))) {
     fs.rmSync(GIT_SYNC_DIR, { recursive: true, force: true });
-    console.log(`[Git Sync] Cloning shallow repo ${GITHUB_REPO} (branch: ${GITHUB_BRANCH})...`);
-    execSync(`git clone --depth 1 --branch ${GITHUB_BRANCH} ${remoteUrl} ${GIT_SYNC_DIR}`, {
+    console.log(`[Git Sync] Cloning shallow repo ${activeRepo} (branch: ${activeBranch})...`);
+    execSync(`git clone --depth 1 --branch ${activeBranch} ${remoteUrl} ${GIT_SYNC_DIR}`, {
       stdio: "pipe",
       timeout: 45000
     });
   } else {
     try {
-      execSync(`git pull origin ${GITHUB_BRANCH} --rebase`, {
+      execSync(`git pull origin ${activeBranch} --rebase`, {
         cwd: GIT_SYNC_DIR,
         stdio: "pipe",
         timeout: 25000
@@ -347,12 +420,12 @@ async function executeGitSync(repoPath: string, contentStr: string, commitMessag
     } catch (pullErr) {
       console.warn("[Git Sync] Pull failed, resetting to origin branch:", pullErr);
       try {
-        execSync(`git fetch origin ${GITHUB_BRANCH} --depth 1`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
-        execSync(`git reset --hard origin/${GITHUB_BRANCH}`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
+        execSync(`git fetch origin ${activeBranch} --depth 1`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
+        execSync(`git reset --hard origin/${activeBranch}`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
       } catch (resetErr) {
         console.warn("[Git Sync] Reset failed, re-cloning repo:", resetErr);
         fs.rmSync(GIT_SYNC_DIR, { recursive: true, force: true });
-        execSync(`git clone --depth 1 --branch ${GITHUB_BRANCH} ${remoteUrl} ${GIT_SYNC_DIR}`, {
+        execSync(`git clone --depth 1 --branch ${activeBranch} ${remoteUrl} ${GIT_SYNC_DIR}`, {
           stdio: "pipe",
           timeout: 45000
         });
@@ -360,13 +433,32 @@ async function executeGitSync(repoPath: string, contentStr: string, commitMessag
     }
   }
 
-  // 2. Write file
+  // 2. Write file to primary path
   const fullTarget = path.join(GIT_SYNC_DIR, repoPath);
   const targetDir = path.dirname(fullTarget);
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
   fs.writeFileSync(fullTarget, contentStr, "utf8");
+
+  // Mirror to src/data or public/data if directory exists in the repo
+  try {
+    if (repoPath.startsWith("public/data/")) {
+      const fileName = path.basename(repoPath);
+      const mirrorTarget = path.join(GIT_SYNC_DIR, "src", "data", fileName);
+      if (fs.existsSync(path.dirname(mirrorTarget))) {
+        fs.writeFileSync(mirrorTarget, contentStr, "utf8");
+      }
+    } else if (repoPath.startsWith("src/data/")) {
+      const fileName = path.basename(repoPath);
+      const mirrorTarget = path.join(GIT_SYNC_DIR, "public", "data", fileName);
+      if (fs.existsSync(path.dirname(mirrorTarget))) {
+        fs.writeFileSync(mirrorTarget, contentStr, "utf8");
+      }
+    }
+  } catch (mErr) {
+    // Non-critical mirror write
+  }
 
   // 3. Configure git committer
   execSync('git config user.name "Dragopedia Sync" && git config user.email "dragopedia@tirian.world"', {
@@ -382,29 +474,40 @@ async function executeGitSync(repoPath: string, contentStr: string, commitMessag
   }
 
   // 5. Commit and Push
-  execSync(`git add "${repoPath}"`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
+  execSync(`git add -A`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
   const safeMsg = commitMessage.replace(/"/g, '\\"');
   execSync(`git commit -m "${safeMsg}"`, { cwd: GIT_SYNC_DIR, stdio: "pipe" });
 
-  console.log(`[Git Sync] Pushing changes for ${repoPath} to GitHub...`);
-  execSync(`git push origin ${GITHUB_BRANCH}`, {
+  console.log(`[Git Sync] Pushing changes for ${repoPath} to GitHub ${activeRepo}:${activeBranch}...`);
+  execSync(`git push origin ${activeBranch}`, {
     cwd: GIT_SYNC_DIR,
     stdio: "pipe",
     timeout: 35000
   });
 
-  console.log(`[Git Sync] Successfully pushed ${repoPath} to GitHub ${GITHUB_REPO}:${GITHUB_BRANCH}`);
+  console.log(`[Git Sync] Successfully pushed ${repoPath} to GitHub ${activeRepo}:${activeBranch}`);
   return true;
 }
 
-async function writeViaRestApi(repoPath: string, contentStr: string, commitMessage: string): Promise<boolean> {
+async function writeViaRestApi(
+  repoPath: string, 
+  contentStr: string, 
+  commitMessage: string, 
+  tokenOverride?: string
+): Promise<boolean> {
+  const activeToken = tokenOverride || getEffectiveGitHubToken();
+  const activeRepo = getEffectiveGitHubRepo();
+  const activeBranch = getEffectiveGitHubBranch();
+
+  if (!activeToken) return false;
+
   let sha: string | undefined;
   try {
-    const metaUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${repoPath}?ref=${GITHUB_BRANCH}`;
+    const metaUrl = `https://api.github.com/repos/${activeRepo}/contents/${repoPath}?ref=${activeBranch}`;
     const metaRes = await fetch(metaUrl, {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${GITHUB_TOKEN}`,
+        "Authorization": `Bearer ${activeToken}`,
         "Accept": "application/json",
         "User-Agent": "Dragopedia-Server"
       }
@@ -417,19 +520,19 @@ async function writeViaRestApi(repoPath: string, contentStr: string, commitMessa
     console.error(`[GitHub REST Write] Error checking sha for ${repoPath}:`, err);
   }
 
-  const putUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${repoPath}`;
+  const putUrl = `https://api.github.com/repos/${activeRepo}/contents/${repoPath}`;
   const base64Content = Buffer.from(contentStr, "utf8").toString("base64");
   const body: any = {
     message: commitMessage,
     content: base64Content,
-    branch: GITHUB_BRANCH
+    branch: activeBranch
   };
   if (sha) body.sha = sha;
 
   const putRes = await fetch(putUrl, {
     method: "PUT",
     headers: {
-      "Authorization": `Bearer ${GITHUB_TOKEN}`,
+      "Authorization": `Bearer ${activeToken}`,
       "Accept": "application/json",
       "Content-Type": "application/json",
       "User-Agent": "Dragopedia-Server"
@@ -440,8 +543,14 @@ async function writeViaRestApi(repoPath: string, contentStr: string, commitMessa
   return putRes.status === 200 || putRes.status === 201;
 }
 
-async function writeToGitHub(repoPath: string, contentStr: string, commitMessage: string): Promise<boolean> {
-  if (!GITHUB_TOKEN) {
+async function writeToGitHub(
+  repoPath: string, 
+  contentStr: string, 
+  commitMessage: string, 
+  tokenOverride?: string
+): Promise<boolean> {
+  const activeToken = tokenOverride || getEffectiveGitHubToken();
+  if (!activeToken) {
     console.warn(`[GitHub Write] No GITHUB_TOKEN configured. Cannot write ${repoPath} to GitHub.`);
     return false;
   }
@@ -451,7 +560,7 @@ async function writeToGitHub(repoPath: string, contentStr: string, commitMessage
       .catch(() => true)
       .then(async () => {
         try {
-          const success = await executeGitSync(repoPath, contentStr, commitMessage);
+          const success = await executeGitSync(repoPath, contentStr, commitMessage, activeToken);
           resolve(success);
           return success;
         } catch (gitErr) {
@@ -459,7 +568,7 @@ async function writeToGitHub(repoPath: string, contentStr: string, commitMessage
           // Fallback to REST API if file is reasonably small
           if (contentStr.length < 5 * 1024 * 1024) {
             try {
-              const restSuccess = await writeViaRestApi(repoPath, contentStr, commitMessage);
+              const restSuccess = await writeViaRestApi(repoPath, contentStr, commitMessage, activeToken);
               resolve(restSuccess);
               return restSuccess;
             } catch (restErr) {
@@ -868,13 +977,13 @@ function initMultiFirebase() {
       const projectId = config.project_id || `proyecto-${idx}`;
       const appName = `app-${idx}`;
       
-      let app: admin.app.App;
-      const existingApp = admin.apps.find(a => a.name === appName);
+      let app: any;
+      const existingApp = ((admin as any).apps || []).find((a: any) => a?.name === appName);
       if (existingApp) {
         app = existingApp;
       } else {
-        app = admin.initializeApp({
-          credential: admin.credential.cert(config),
+        app = (admin as any).initializeApp({
+          credential: (admin as any).credential.cert(config),
         }, appName);
       }
 
@@ -1219,16 +1328,16 @@ async function readArticles(): Promise<WikiArticle[]> {
 }
 
 // Helper to write articles with automatic routing & overflow
-async function writeArticles(articles: WikiArticle[], retryCount = 0): Promise<void> {
+async function writeArticles(articles: WikiArticle[], retryCount = 0, tokenOverride?: string): Promise<boolean> {
   // Always update the global in-memory cache!
   articlesCache = articles;
 
   // Always save to the local articles.json and seed_articles.json files!
   const targetBackupPaths = [
-    path.join(process.cwd(), "src", "data", "articles.json"),
     path.join(process.cwd(), "public", "data", "articles.json"),
-    path.join(process.cwd(), "src", "data", "seed_articles.json"),
+    path.join(process.cwd(), "src", "data", "articles.json"),
     path.join(process.cwd(), "public", "data", "seed_articles.json"),
+    path.join(process.cwd(), "src", "data", "seed_articles.json"),
   ];
 
   for (const backupPath of targetBackupPaths) {
@@ -1245,18 +1354,27 @@ async function writeArticles(articles: WikiArticle[], retryCount = 0): Promise<v
   }
 
   // Guardar en GitHub de forma garantizada y sincronizada
-  if (GITHUB_TOKEN) {
+  const activeToken = tokenOverride || getEffectiveGitHubToken();
+  if (activeToken) {
     try {
-      const success = await writeToGitHub(GITHUB_ARTICLES_PATH, JSON.stringify(articles, null, 2), "Actualizar artículos (Dragopedia Database Update)");
+      const success = await writeToGitHub(
+        GITHUB_ARTICLES_PATH, 
+        JSON.stringify(articles, null, 2), 
+        "Actualizar artículos y asignación de subcategorías (Dragopedia Database Update)",
+        activeToken
+      );
       if (success) {
         console.log("[GitHub Write] Artículos guardados y sincronizados exitosamente en GitHub.");
       } else {
         console.warn("[GitHub Write] Error al escribir los artículos en GitHub. Quedan respaldados en el almacenamiento local temporal.");
       }
+      return success;
     } catch (err) {
       console.error("[GitHub Write Error]:", err);
+      return false;
     }
   }
+  return false;
 }
 
 
@@ -1549,32 +1667,43 @@ function normalizeCategoryName(inputCat: string, availableNames: string[]): stri
 }
 
 // Helper to write/update categories across all databases
-async function writeCategories(categories: WikiCategory[]): Promise<void> {
+async function writeCategories(categories: WikiCategory[], tokenOverride?: string): Promise<boolean> {
   // Always update the global in-memory cache!
   categoriesCache = categories;
 
-  const backupPath = path.join(process.cwd(), "src", "data", "categories.json");
-  try {
-    fs.writeFileSync(backupPath, JSON.stringify(categories, null, 2), "utf8");
-    console.log(`[Local Backup] Local categories.json updated with ${categories.length} categories during write.`);
-    
-    const publicBackupPath = path.join(process.cwd(), "public", "data", "categories.json");
-    if (fs.existsSync(path.dirname(publicBackupPath))) {
-      fs.writeFileSync(publicBackupPath, JSON.stringify(categories, null, 2), "utf8");
+  const targetBackupPaths = [
+    path.join(process.cwd(), "public", "data", "categories.json"),
+    path.join(process.cwd(), "src", "data", "categories.json"),
+  ];
+
+  for (const backupPath of targetBackupPaths) {
+    try {
+      const dir = path.dirname(backupPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(backupPath, JSON.stringify(categories, null, 2), "utf8");
+      console.log(`[Local Backup] ${backupPath} updated with ${categories.length} categories during write.`);
+    } catch (saveErr) {
+      console.error(`[Local Backup] Failed to write local categories backup to ${backupPath}:`, saveErr);
     }
-  } catch (saveErr) {
-    console.error("[Local Backup] Failed to write local categories backup during write:", saveErr);
   }
 
   // Guardar en GitHub
-  if (GITHUB_TOKEN) {
-    const success = await writeToGitHub(GITHUB_CATEGORIES_PATH, JSON.stringify(categories, null, 2), "Actualizar categorías (Dragopedia Database Update)");
+  const activeToken = tokenOverride || getEffectiveGitHubToken();
+  if (activeToken) {
+    const success = await writeToGitHub(
+      GITHUB_CATEGORIES_PATH, 
+      JSON.stringify(categories, null, 2), 
+      "Actualizar categorías y subcategorías (Dragopedia Database Update)",
+      activeToken
+    );
     if (success) {
-      console.log("[GitHub Write] Categorías guardadas exitosamente en GitHub.");
+      console.log("[GitHub Write] Categorías y subcategorías guardadas exitosamente en GitHub.");
     } else {
       console.warn("[GitHub Write] Error al escribir las categorías en GitHub. Quedan respaldadas en el almacenamiento local temporal.");
     }
+    return success;
   }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -1660,7 +1789,7 @@ async function getLiveGroqModels(apiKey?: string): Promise<string[]> {
             cachedGroqLiveModels = chatModels;
             lastGroqLiveModelsFetch = now;
             console.log(`[GROQ] Modelos activos obtenidos en vivo (${chatModels.length}):`, chatModels.slice(0, 6).join(", "));
-            return chatModels.filter((m) => !knownDeadGroqModels.has(m));
+            return chatModels.filter((m: any) => !knownDeadGroqModels.has(m));
           }
         }
       }
@@ -3551,6 +3680,7 @@ app.post("/api/articles/:id/restore/:backupId", async (req: Request, res: Respon
 // 3. Create active article
 app.post("/api/articles", async (req: Request, res: Response) => {
   try {
+    const token = req.headers["x-github-token"] as string;
     const articles = await readArticles();
     const newArticle: WikiArticle = req.body;
     if (!newArticle.id) {
@@ -3566,8 +3696,8 @@ app.post("/api/articles", async (req: Request, res: Response) => {
     const filtered = articles.filter(a => a.id !== newArticle.id);
     filtered.unshift(newArticle);
     
-    await writeArticles(filtered);
-    res.status(200).json(newArticle);
+    const githubSaved = await writeArticles(filtered, 0, token);
+    res.status(200).json({ ...newArticle, githubSaved });
   } catch (err: any) {
     console.error("Error creating article:", err);
     res.status(500).json({ error: err?.message || "Error al crear artículo" });
@@ -3577,6 +3707,7 @@ app.post("/api/articles", async (req: Request, res: Response) => {
 // 4. Update active article
 app.put("/api/articles/:id", async (req: Request, res: Response) => {
   try {
+    const token = req.headers["x-github-token"] as string;
     const articles = await readArticles();
     const id = req.params.id;
     const index = articles.findIndex((a) => a.id === id);
@@ -3598,8 +3729,8 @@ app.put("/api/articles/:id", async (req: Request, res: Response) => {
         updated_date: new Date().toISOString()
       };
       articles[index] = updatedArticle;
-      await writeArticles(articles);
-      res.status(200).json(updatedArticle);
+      const githubSaved = await writeArticles(articles, 0, token);
+      res.status(200).json({ ...updatedArticle, githubSaved });
     } else {
       // If not found in index, create/insert it to avoid losing user work
       const fallbackData = { ...req.body };
@@ -3610,8 +3741,8 @@ app.put("/api/articles/:id", async (req: Request, res: Response) => {
         updated_date: new Date().toISOString()
       };
       articles.unshift(fallbackArticle);
-      await writeArticles(articles);
-      res.status(200).json(fallbackArticle);
+      const githubSaved = await writeArticles(articles, 0, token);
+      res.status(200).json({ ...fallbackArticle, githubSaved });
     }
   } catch (err: any) {
     console.error("Error updating article:", err);
@@ -3967,48 +4098,133 @@ app.post("/api/translate-all/cancel", (req: Request, res: Response) => {
   res.json({ success: true, message: "Cancelación solicitada." });
 });
 
+// Helper to write category order to local disk and GitHub
+async function writeCategoryOrder(order: string[], tokenOverride?: string): Promise<boolean> {
+  const targetPaths = [
+    path.join(process.cwd(), "public", "data", "category_order.json"),
+    path.join(process.cwd(), "src", "data", "category_order.json"),
+  ];
+
+  for (const p of targetPaths) {
+    try {
+      const dir = path.dirname(p);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(p, JSON.stringify(order, null, 2), "utf8");
+    } catch (saveErr) {
+      console.warn("Could not write category order locally to " + p, saveErr);
+    }
+  }
+
+  const activeToken = tokenOverride || getEffectiveGitHubToken();
+  if (activeToken) {
+    const success = await writeToGitHub(
+      GITHUB_CATEGORY_ORDER_PATH, 
+      JSON.stringify(order, null, 2), 
+      "Actualizar orden taxonómico de categorías y subcategorías (Dragopedia Database Update)",
+      activeToken
+    );
+    if (success) {
+      console.log("[GitHub Write] Orden de categorías guardado exitosamente en GitHub.");
+    } else {
+      console.warn("[GitHub Write] Error al escribir el orden de categorías en GitHub.");
+    }
+    return success;
+  }
+  return false;
+}
+
 // 7. Create Category
 app.post("/api/categories", async (req: Request, res: Response) => {
-  const categories = await readCategories();
-  const newCategory: WikiCategory = req.body;
-  if (!newCategory.id) {
-    newCategory.id = `cat-${Date.now()}`;
+  try {
+    const token = req.headers["x-github-token"] as string;
+    const categories = await readCategories();
+    const newCategory: WikiCategory = req.body;
+    if (!newCategory.id) {
+      newCategory.id = `cat-${Date.now()}`;
+    }
+    const existingIndex = categories.findIndex(
+      (c) => c.id === newCategory.id || (c.slug && newCategory.slug && c.slug === newCategory.slug)
+    );
+    let savedCat: WikiCategory;
+    if (existingIndex !== -1) {
+      categories[existingIndex] = { ...categories[existingIndex], ...newCategory };
+      savedCat = categories[existingIndex];
+    } else {
+      categories.push(newCategory);
+      savedCat = newCategory;
+    }
+    const githubSaved = await writeCategories(categories, token);
+    res.status(200).json({ ...savedCat, githubSaved });
+  } catch (err: any) {
+    console.error("Error creating category:", err);
+    res.status(500).json({ error: err.message || "Error al crear categoría." });
   }
-  categories.push(newCategory);
-  await writeCategories(categories);
-  res.status(210).json(newCategory);
 });
 
 // 7b. Update Category
 app.put("/api/categories/:id", async (req: Request, res: Response) => {
-  const categories = await readCategories();
-  const id = req.params.id;
-  const index = categories.findIndex((c) => c.id === id);
-  if (index !== -1) {
-    categories[index] = { ...categories[index], ...req.body };
-    await writeCategories(categories);
-    res.json(categories[index]);
-  } else {
-    res.status(404).json({ error: "Categoría no encontrada" });
+  try {
+    const token = req.headers["x-github-token"] as string;
+    const categories = await readCategories();
+    const id = req.params.id;
+    const index = categories.findIndex(
+      (c) => c.id === id || c.slug === id || `cat-${c.slug}` === id || (c.id && c.id.replace(/^cat-/, "") === id.replace(/^cat-/, ""))
+    );
+    if (index !== -1) {
+      categories[index] = { ...categories[index], ...req.body };
+      const githubSaved = await writeCategories(categories, token);
+      res.json({ ...categories[index], githubSaved });
+    } else {
+      // Check if it's one of DEFAULT_CATEGORIES to allow converting base categories into subcategories
+      const defaultCat = DEFAULT_CATEGORIES.find(
+        (c) => c.id === id || c.slug === id || `cat-${c.slug}` === id || (c.id && c.id.replace(/^cat-/, "") === id.replace(/^cat-/, ""))
+      );
+      if (defaultCat) {
+        const createdCat: WikiCategory = {
+          ...defaultCat,
+          ...req.body,
+          id: defaultCat.id
+        };
+        categories.push(createdCat);
+        const githubSaved = await writeCategories(categories, token);
+        res.json({ ...createdCat, githubSaved });
+      } else {
+        res.status(404).json({ error: "Categoría no encontrada" });
+      }
+    }
+  } catch (err: any) {
+    console.error("Error updating category:", err);
+    res.status(500).json({ error: err.message || "Error al actualizar categoría." });
   }
 });
 
 // 8. Delete Category
 app.delete("/api/categories/:id", async (req: Request, res: Response) => {
-  const categories = await readCategories();
-  const filtered = categories.filter((c) => c.id !== req.params.id);
-  await writeCategories(filtered);
-  res.json({ success: true });
+  try {
+    const token = req.headers["x-github-token"] as string;
+    const categories = await readCategories();
+    const filtered = categories.filter((c) => c.id !== req.params.id);
+    const githubSaved = await writeCategories(filtered, token);
+    res.json({ success: true, githubSaved });
+  } catch (err: any) {
+    console.error("Error deleting category:", err);
+    res.status(500).json({ error: err.message || "Error al eliminar categoría." });
+  }
 });
 
 // 8c. Get category order
 app.get("/api/category-order", async (req: Request, res: Response) => {
   try {
-    const orderPath = path.join(process.cwd(), "src", "data", "category_order.json");
-    if (fs.existsSync(orderPath)) {
-      const data = JSON.parse(fs.readFileSync(orderPath, "utf8"));
-      if (Array.isArray(data)) {
-        return res.json(data);
+    const orderPaths = [
+      path.join(process.cwd(), "public", "data", "category_order.json"),
+      path.join(process.cwd(), "src", "data", "category_order.json"),
+    ];
+    for (const p of orderPaths) {
+      if (fs.existsSync(p)) {
+        const data = JSON.parse(fs.readFileSync(p, "utf8"));
+        if (Array.isArray(data)) {
+          return res.json(data);
+        }
       }
     }
     return res.json([]);
@@ -4018,32 +4234,154 @@ app.get("/api/category-order", async (req: Request, res: Response) => {
   }
 });
 
-// 8d. Update category order
+// 8d. Update category order (Persists locally and syncs to GitHub)
 app.put("/api/category-order", async (req: Request, res: Response) => {
   try {
+    const token = req.headers["x-github-token"] as string;
     const { order } = req.body;
     if (!Array.isArray(order)) {
       return res.status(400).json({ error: "El orden debe ser un arreglo de identificadores." });
     }
-    const orderPath = path.join(process.cwd(), "src", "data", "category_order.json");
-    fs.writeFileSync(orderPath, JSON.stringify(order, null, 2), "utf8");
-
-    try {
-      const publicOrderPath = path.join(process.cwd(), "public", "data", "category_order.json");
-      fs.writeFileSync(publicOrderPath, JSON.stringify(order, null, 2), "utf8");
-    } catch (pubErr) {
-      console.warn("Could not write public/data/category_order.json:", pubErr);
-    }
-
-    // Guardar en GitHub si hay token configurado
-    if (GITHUB_TOKEN) {
-      writeToGitHub("src/data/category_order.json", JSON.stringify(order, null, 2), "Actualizar orden de categorías").catch(console.error);
-    }
-
-    res.json({ success: true, order });
+    const githubSaved = await writeCategoryOrder(order, token);
+    res.json({ success: true, order, githubSaved });
   } catch (err: any) {
     console.error("Error saving category order:", err);
     res.status(500).json({ error: "Error al guardar el orden de categorías." });
+  }
+});
+
+// 8e. GitHub Sync & Configuration Endpoints
+app.get("/api/github-config", (req: Request, res: Response) => {
+  const cfg = getEffectiveGitHubConfig();
+  res.json({
+    configured: !!cfg.token,
+    repo: cfg.repo,
+    branch: cfg.branch,
+    user: cfg.user,
+    tokenPreview: cfg.token ? `${cfg.token.slice(0, 4)}...${cfg.token.slice(-4)}` : ""
+  });
+});
+
+app.post("/api/github-config", async (req: Request, res: Response) => {
+  try {
+    const { token, repo, branch } = req.body || {};
+    const configPath = GITHUB_CONFIG_FILE;
+    const current = getEffectiveGitHubConfig();
+    
+    let resolvedUser = current.user;
+    const targetToken = typeof token === "string" ? token.trim() : current.token;
+    const targetRepo = typeof repo === "string" && repo.trim() ? repo.trim() : current.repo;
+    const targetBranch = typeof branch === "string" && branch.trim() ? branch.trim() : current.branch;
+
+    // Verify token with GitHub API if provided
+    if (targetToken) {
+      try {
+        const verifyRes = await fetch("https://api.github.com/user", {
+          headers: {
+            "Authorization": `Bearer ${targetToken}`,
+            "User-Agent": "Dragopedia-Server"
+          }
+        });
+        if (!verifyRes.ok) {
+          return res.status(400).json({
+            error: "El token de GitHub no es válido o no tiene los permisos suficientes (requiere permiso repo)."
+          });
+        }
+        const userData = await verifyRes.json() as any;
+        resolvedUser = userData.login;
+        console.log(`[GitHub Auth] Token verified for GitHub user: ${resolvedUser}`);
+      } catch (authErr: any) {
+        console.warn("Could not verify token with GitHub API:", authErr);
+      }
+    }
+
+    const newConfig: GitHubRuntimeConfig = {
+      token: targetToken,
+      repo: targetRepo,
+      branch: targetBranch,
+      user: resolvedUser
+    };
+
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2), "utf8");
+
+    // Update runtime active config
+    activeGitHubConfig = newConfig;
+    GITHUB_TOKEN = newConfig.token;
+    GITHUB_REPO = newConfig.repo;
+    GITHUB_BRANCH = newConfig.branch;
+
+    res.json({
+      success: true,
+      configured: !!newConfig.token,
+      repo: newConfig.repo,
+      branch: newConfig.branch,
+      user: resolvedUser,
+      message: `Configuración de GitHub guardada con éxito en el servidor.`
+    });
+  } catch (err: any) {
+    console.error("Error in POST /api/github-config:", err);
+    res.status(500).json({ error: err.message || "Error al guardar configuración de GitHub." });
+  }
+});
+
+app.post("/api/github-sync", async (req: Request, res: Response) => {
+  try {
+    const { target = "categories" } = req.body || {};
+    const token = req.headers["x-github-token"] as string || getEffectiveGitHubToken();
+    const cfg = getEffectiveGitHubConfig();
+
+    if (!token) {
+      return res.status(400).json({
+        error: "No hay token de GitHub configurado. Por favor ingresa tu Personal Access Token."
+      });
+    }
+
+    let success = true;
+    let detail = "";
+
+    if (target === "categories" || target === "all") {
+      const categories = await readCategories();
+      const catSuccess = await writeCategories(categories, token);
+      
+      const orderPaths = [
+        path.join(process.cwd(), "public", "data", "category_order.json"),
+        path.join(process.cwd(), "src", "data", "category_order.json")
+      ];
+      let order: string[] = [];
+      for (const p of orderPaths) {
+        if (fs.existsSync(p)) {
+          try { order = JSON.parse(fs.readFileSync(p, "utf8")); break; } catch (e) {}
+        }
+      }
+      let ordSuccess = true;
+      if (order.length > 0) {
+        ordSuccess = await writeCategoryOrder(order, token);
+      }
+      success = success && catSuccess && ordSuccess;
+      detail += `${categories.length} categorías/subcategorías sincronizadas.`;
+    }
+
+    if (target === "articles" || target === "all") {
+      const articles = await readArticles();
+      const artSuccess = await writeArticles(articles, 0, token);
+      success = success && artSuccess;
+      detail += ` ${articles.length} artículos sincronizados.`;
+    }
+
+    res.json({
+      success,
+      repo: cfg.repo,
+      branch: cfg.branch,
+      message: success 
+        ? `Sincronización con GitHub (${cfg.repo}) completada con éxito.` 
+        : `No se pudo completar la sincronización con GitHub (${cfg.repo}).`,
+      detail
+    });
+  } catch (err: any) {
+    console.error("Error in /api/github-sync:", err);
+    res.status(500).json({ error: err.message || "Error al sincronizar con GitHub." });
   }
 });
 
@@ -8609,7 +8947,7 @@ app.post("/api/ai/auto-crosslink-text", async (req: Request, res: Response) => {
             if (pattern.test(seg)) {
               const hasExistingLink = text.includes(`/articulo/${target.slug}`);
               if (!hasExistingLink) {
-                segments[i] = seg.replace(pattern, (match) => {
+                segments[i] = seg.replace(pattern, (match: string) => {
                   linksAddedCount++;
                   if (!detectedEntities.includes(target.title)) {
                     detectedEntities.push(target.title);
@@ -9839,7 +10177,7 @@ DIRECTIVAS INQUEBRANTABLES DE SEGURIDAD, CONFIDENCIALIDAD Y BLINDAJE ANTI-INYECC
     }
 
     let detectedTargetSlugs: string[] = [];
-    const slugMatches = Array.from((message || "").matchAll(/slug:\s*([a-z0-9-]+)/gi)).map(m => m[1]);
+    const slugMatches = Array.from((message || "").matchAll(/slug:\s*([a-z0-9-]+)/gi)).map((m: any) => m[1]);
     if (slugMatches.length > 0) {
       detectedTargetSlugs = slugMatches;
     } else {

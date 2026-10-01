@@ -1,5 +1,0 @@
-{
-  "css.lint.unknownAtRules": "ignore",
-  "json.maxItemsComputed": 50000,
-  "typescript.validate.enable": true
-}

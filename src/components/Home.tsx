@@ -338,9 +338,6 @@ export function Home() {
               label="Título Sección Categorías"
               className="font-heading font-semibold text-lg text-foreground tracking-wider uppercase"
             />
-            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground border border-border/40">
-              {mergedCategories.length}
-            </span>
           </div>
 
           <div className="flex items-center gap-2">

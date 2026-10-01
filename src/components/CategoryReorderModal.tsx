@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useCategories } from "../context/CategoryContext";
 import { 
   X, GripVertical, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, 
-  RotateCcw, Check, Sparkles, SlidersHorizontal, Info, Shield, BookmarkCheck
+  RotateCcw, Check, Sparkles, SlidersHorizontal, Info, Shield, BookmarkCheck,
+  Github
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { GitHubConfigModal } from "./GitHubConfigModal";
 
 interface CategoryReorderModalProps {
   isOpen: boolean;
@@ -23,6 +25,17 @@ export function CategoryReorderModal({ isOpen, onClose }: CategoryReorderModalPr
   const [draggedCatId, setDraggedCatId] = useState<string | null>(null);
   const [dragOverCatId, setDragOverCatId] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
+  const [githubConfig, setGithubConfig] = useState<{ configured: boolean; repo: string } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch("/api/github-config")
+        .then(r => r.json())
+        .then(data => setGithubConfig(data))
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -63,52 +76,68 @@ export function CategoryReorderModal({ isOpen, onClose }: CategoryReorderModalPr
 
   const triggerSavedFeedback = () => {
     setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 2000);
+    setTimeout(() => setJustSaved(false), 2500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div 
-        className="fixed inset-0"
-        onClick={onClose}
-      />
-      <motion.div 
-        initial={{ scale: 0.96, opacity: 0, y: 10 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.96, opacity: 0, y: 10 }}
-        className="relative bg-card border border-border/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden z-10"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/60 bg-secondary/30 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-sm">
-              <SlidersHorizontal className="h-4.5 w-4.5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-heading font-bold text-base text-foreground tracking-wide">
-                  Reordenar Categorías del Cosmos
-                </h2>
-                {justSaved && (
-                  <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1 animate-in fade-in">
-                    <Check className="h-2.5 w-2.5" /> Guardado
-                  </span>
-                )}
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
+        <div 
+          className="fixed inset-0"
+          onClick={onClose}
+        />
+        <motion.div 
+          initial={{ scale: 0.96, opacity: 0, y: 10 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.96, opacity: 0, y: 10 }}
+          className="relative bg-card border border-border/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden z-10"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border/60 bg-secondary/30 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shadow-sm">
+                <SlidersHorizontal className="h-4.5 w-4.5" />
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Arrastra o mueve cualquier categoría (personalizada o fija) para fijar el orden del menú y la portada.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-heading font-bold text-base text-foreground tracking-wide">
+                    Reordenar Categorías del Cosmos
+                  </h2>
+                  {justSaved && (
+                    <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1 animate-in fade-in">
+                      <Check className="h-2.5 w-2.5" /> Guardado y Sincronizado en GitHub
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Arrastra o mueve cualquier categoría para fijar el orden y sincronizarlo en GitHub.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsGitHubModalOpen(true)}
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-colors ${
+                  githubConfig?.configured
+                    ? "bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
+                    : "bg-secondary border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="Configurar repositorio y token de GitHub"
+              >
+                <Github className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">GitHub: {githubConfig?.repo || "Cdd-wiki-V3"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+                title="Cerrar modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-            title="Cerrar modal"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
         {/* Informative banner: Free reordering between custom and fixed */}
         <div className="px-5 py-2.5 bg-accent/10 border-b border-accent/20 flex items-start gap-2.5 text-xs text-muted-foreground shrink-0">
@@ -297,17 +326,39 @@ export function CategoryReorderModal({ isOpen, onClose }: CategoryReorderModalPr
         <div className="px-5 py-3.5 border-t border-border/60 bg-secondary/30 flex items-center justify-between gap-3 shrink-0">
           <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <BookmarkCheck className="h-3.5 w-3.5 text-primary" />
-            Los cambios se aplican y guardan instantáneamente.
+            Los cambios se guardan localmente y se sincronizan en GitHub.
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm"
-          >
-            Listo
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsGitHubModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs font-medium hover:bg-purple-500/20 transition-colors flex items-center gap-1.5"
+            >
+              <Github className="h-3.5 w-3.5" />
+              <span>Sincronización GitHub</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              Listo
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
+
+    <GitHubConfigModal
+      isOpen={isGitHubModalOpen}
+      onClose={() => setIsGitHubModalOpen(false)}
+      onSuccess={() => {
+        fetch("/api/github-config")
+          .then(r => r.json())
+          .then(data => setGithubConfig(data))
+          .catch(() => {});
+      }}
+    />
+  </>
   );
 }

@@ -10,8 +10,8 @@ interface CategoryContextType {
   loading: boolean;
   error: string | null;
   refreshCategories: () => Promise<void>;
-  addCategory: (name: string, description: string, color?: string, icon?: string) => Promise<WikiCategory>;
-  updateCategory: (id: string, name: string, description: string, color?: string, icon?: string) => Promise<WikiCategory>;
+  addCategory: (name: string, description: string, color?: string, icon?: string, parentId?: string | null, parentSlug?: string | null) => Promise<WikiCategory>;
+  updateCategory: (id: string, name: string, description: string, color?: string, icon?: string, parentId?: string | null, parentSlug?: string | null) => Promise<WikiCategory>;
   deleteCategory: (id: string) => Promise<void>;
   reorderCategories: (newOrder: string[]) => Promise<void>;
   moveCategory: (id: string, direction: "up" | "down" | "top" | "bottom") => Promise<void>;
@@ -19,11 +19,23 @@ interface CategoryContextType {
   resetCategoryOrder: () => Promise<void>;
   reassignCategory: (categoryId: string) => Promise<{ id: string; title: string; oldCategory: string; newCategory: string }[]>;
   confirmReassign: (reassignments: { id: string; newCategory: string }[]) => Promise<number>;
+  convertCategoryToSubcategory: (categoryId: string, parentCategoryId: string | null) => Promise<void>;
 }
 
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_ORDER_KEY = "caldo_dragopedia_category_order";
+
+export function getGitHubAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  try {
+    const token = localStorage.getItem("dragopedia_github_token");
+    if (token) {
+      headers["x-github-token"] = token;
+    }
+  } catch (e) {}
+  return headers;
+}
 
 export function CategoryProvider({ children }: { children: React.ReactNode }) {
   const [customCategories, setCustomCategories] = useState<WikiCategory[]>(() => {
@@ -95,7 +107,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     refreshCategoryOrder();
   }, []);
 
-  const addCategory = async (name: string, description: string, color?: string, icon?: string) => {
+  const addCategory = async (name: string, description: string, color?: string, icon?: string, parentId?: string | null, parentSlug?: string | null) => {
     try {
       const slug = name
         .toLowerCase()
@@ -110,12 +122,14 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
         slug,
         description,
         color: color || "#" + Math.floor(Math.random() * 16777215).toString(16),
-        icon: icon || "BookOpen"
+        icon: icon || "BookOpen",
+        parentId: parentId || null,
+        parentSlug: parentSlug || null
       };
 
       const res = await fetch("/api/categories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getGitHubAuthHeaders(),
         body: JSON.stringify(newCat)
       });
 
@@ -133,7 +147,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateCategory = async (id: string, name: string, description: string, color?: string, icon?: string) => {
+  const updateCategory = async (id: string, name: string, description: string, color?: string, icon?: string, parentId?: string | null, parentSlug?: string | null) => {
     try {
       const slug = name
         .toLowerCase()
@@ -148,12 +162,14 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
         slug,
         description,
         color: color || "#c8a96e",
-        icon: icon || "BookOpen"
+        icon: icon || "BookOpen",
+        parentId: parentId !== undefined ? parentId : undefined,
+        parentSlug: parentSlug !== undefined ? parentSlug : undefined
       };
 
       const res = await fetch(`/api/categories/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getGitHubAuthHeaders(),
         body: JSON.stringify(updatedCat)
       });
 
@@ -171,10 +187,66 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const convertCategoryToSubcategory = async (categoryId: string, parentCategoryId: string | null) => {
+    try {
+      const allMerged = mergeCategories(customCategories, categoryOrder);
+      const cat = allMerged.find(c => c.id === categoryId || c.slug === categoryId);
+      if (!cat) throw new Error("Categoría no encontrada");
+
+      let parentId: string | null = null;
+      let parentSlug: string | null = null;
+
+      if (parentCategoryId) {
+        const parent = allMerged.find(c => c.id === parentCategoryId || c.slug === parentCategoryId);
+        if (parent) {
+          parentId = parent.id;
+          parentSlug = parent.slug;
+        }
+      }
+
+      // Check if this category exists in customCategories
+      const existingCustom = customCategories.find(
+        c => c.id === categoryId || c.slug === categoryId || c.slug === cat.slug || c.id === cat.id
+      );
+
+      if (existingCustom) {
+        const res = await fetch(`/api/categories/${existingCustom.id || cat.id}`, {
+          method: "PUT",
+          headers: getGitHubAuthHeaders(),
+          body: JSON.stringify({ parentId, parentSlug })
+        });
+        if (!res.ok) throw new Error("Error al actualizar la jerarquía de la categoría");
+      } else {
+        // It's a base category, create a persisted entry in customCategories
+        const res = await fetch("/api/categories", {
+          method: "POST",
+          headers: getGitHubAuthHeaders(),
+          body: JSON.stringify({
+            id: cat.id,
+            name: cat.name,
+            slug: cat.slug,
+            description: cat.description || "",
+            color: cat.color,
+            icon: cat.iconName || "BookOpen",
+            parentId,
+            parentSlug
+          })
+        });
+        if (!res.ok) throw new Error("Error al registrar la jerarquía de la categoría");
+      }
+
+      await refreshCategories();
+    } catch (err: any) {
+      console.error(err);
+      throw err;
+    }
+  };
+
   const deleteCategory = async (id: string) => {
     try {
       const res = await fetch(`/api/categories/${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getGitHubAuthHeaders()
       });
 
       if (!res.ok) {
@@ -200,7 +272,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     try {
       await fetch("/api/category-order", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getGitHubAuthHeaders(),
         body: JSON.stringify({ order: newOrder })
       });
     } catch (err) {
@@ -324,7 +396,8 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
         moveCategoryToPosition,
         resetCategoryOrder,
         reassignCategory,
-        confirmReassign
+        confirmReassign,
+        convertCategoryToSubcategory
       }}
     >
       {children}
